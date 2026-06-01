@@ -1,0 +1,958 @@
+<!DOCTYPE html>
+<html lang="sq">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover"/>
+<title>Regjistri i Punës — Ari-HSM</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Mono:wght@400;500&family=Sora:wght@300;400;500;600&display=swap" rel="stylesheet"/>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+:root {
+  --bg: #f0f4f0;
+  --surface: #ffffff;
+  --surface2: #f4f7f4;
+  --border: #d4e0d4;
+  --accent: #4a7c59;
+  --accent2: #5a9468;
+  --text: #1a2e1a;
+  --muted: #6b826b;
+  --danger: #c0392b;
+  --success: #2e7d52;
+  --admin-color: #2563eb;
+  --schedule-color: #6d6bb5;
+  --shadow: 0 2px 12px rgba(0,0,0,0.06);
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: var(--bg); color: var(--text); font-family: 'Sora', sans-serif; min-height: 100vh; }
+
+/* AUTH */
+#auth-screen {
+  min-height: 100vh; display: flex; align-items: center; justify-content: center;
+  padding: 20px; background: linear-gradient(135deg, #f0f4f0 0%, #e0ece0 100%);
+}
+.auth-card {
+  background: var(--surface); border: 1px solid var(--border); border-radius: 24px;
+  padding: 40px; width: 100%; max-width: 400px; box-shadow: var(--shadow);
+}
+.auth-logo { font-family: 'DM Serif Display', serif; font-size: 2rem; color: var(--accent); margin-bottom: 4px; }
+.auth-sub { font-size: 0.72rem; color: var(--muted); letter-spacing: 0.1em; margin-bottom: 32px; }
+.auth-tabs { display: flex; gap: 0; margin-bottom: 24px; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+.auth-tab { flex: 1; padding: 9px; text-align: center; font-size: 0.8rem; cursor: pointer; color: var(--muted); transition: all 0.2s; }
+.auth-tab.active { background: var(--accent); color: white; font-weight: 600; }
+.field { margin-bottom: 16px; }
+.field label { display: block; font-size: 0.62rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.15em; margin-bottom: 6px; }
+.field input, .field select { width: 100%; background: var(--surface2); border: 1px solid var(--border); border-radius: 10px; padding: 11px 14px; color: var(--text); font-family: 'Sora', sans-serif; font-size: 0.88rem; transition: border 0.2s; }
+.field input:focus, .field select:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(74,124,89,0.15); }
+.btn-main { width: 100%; background: var(--accent); color: white; border: none; border-radius: 10px; padding: 12px; font-family: 'Sora', sans-serif; font-weight: 600; font-size: 0.9rem; cursor: pointer; transition: background 0.2s; }
+.btn-main:hover { background: var(--accent2); }
+.auth-error { color: var(--danger); font-size: 0.72rem; text-align: center; margin-top: 10px; min-height: 18px; }
+
+/* APP */
+#app { display: none; }
+header {
+  background: rgba(255,255,255,0.96); backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--border); padding: 14px 24px;
+  display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+  position: sticky; top: 0; z-index: 100;
+}
+.hdr-brand { font-family: 'DM Serif Display', serif; font-size: 1.3rem; color: var(--accent); }
+.hdr-sub { font-size: 0.55rem; color: var(--muted); letter-spacing: 0.15em; }
+.hdr-stats { display: flex; gap: 24px; margin-left: auto; }
+.hdr-stat { text-align: right; }
+.hdr-stat-val { font-family: 'DM Mono', monospace; font-size: 1.25rem; color: #2d6040; font-weight: 700; letter-spacing: 0.02em; }
+.hdr-stat-lbl { font-size: 0.62rem; color: #4a6550; text-transform: uppercase; font-weight: 600; letter-spacing: 0.1em; }
+.user-chip { display: flex; align-items: center; gap: 8px; background: var(--surface2); border: 1px solid var(--border); border-radius: 40px; padding: 5px 12px; font-size: 0.75rem; }
+.role-badge { font-size: 0.62rem; padding: 3px 8px; border-radius: 20px; background: var(--accent); color: white; font-weight: 600; }
+.role-badge.admin { background: var(--admin-color); }
+.logout-btn { background: none; border: 1px solid var(--border); border-radius: 7px; padding: 4px 10px; font-size: 0.68rem; color: var(--muted); cursor: pointer; transition: all 0.2s; }
+.logout-btn:hover { border-color: var(--danger); color: var(--danger); }
+
+main { max-width: 1100px; margin: 0 auto; padding: 24px 20px 60px; }
+
+/* NOTIFICATION BANNER */
+.notif-banner {
+  background: #fef9ec; border: 1px solid #f5d87a; border-radius: 12px;
+  padding: 12px 16px; display: flex; align-items: center; justify-content: space-between;
+  flex-wrap: wrap; gap: 10px; margin-bottom: 20px; font-size: 0.8rem;
+}
+.btn-notif { background: var(--accent); color: white; border: none; border-radius: 8px; padding: 7px 16px; font-weight: 600; font-size: 0.75rem; cursor: pointer; }
+
+/* CARDS */
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 18px; padding: 22px; margin-bottom: 22px; box-shadow: var(--shadow); }
+.card-title { font-family: 'DM Serif Display', serif; font-size: 1.05rem; margin-bottom: 18px; }
+.card-title.accent { color: var(--accent); }
+.card-title.admin { color: var(--admin-color); }
+.card-title.schedule { color: var(--schedule-color); }
+
+/* FORMS */
+.form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 12px; align-items: end; }
+.f { display: flex; flex-direction: column; gap: 4px; }
+.f label { font-size: 0.58rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.13em; }
+.f input, .f select, .f textarea { background: var(--surface2); border: 1px solid var(--border); border-radius: 9px; padding: 9px 11px; font-family: 'Sora', sans-serif; font-size: 0.82rem; color: var(--text); width: 100%; }
+.f input:focus, .f select:focus, .f textarea:focus { outline: none; border-color: var(--accent); }
+.price-wrap { position: relative; }
+.price-wrap input { padding-right: 42px; }
+.price-unit { position: absolute; right: 10px; top: 50%; transform: translateY(-50%); font-size: 0.65rem; color: var(--accent); font-weight: 600; }
+.btn-add { background: var(--accent); color: white; border: none; border-radius: 9px; padding: 9px 18px; font-weight: 600; font-size: 0.82rem; cursor: pointer; transition: background 0.2s; white-space: nowrap; }
+.btn-add:hover { background: var(--accent2); }
+.btn-schedule { background: var(--schedule-color); color: white; border: none; border-radius: 9px; padding: 9px 16px; font-weight: 600; font-size: 0.82rem; cursor: pointer; }
+.btn-schedule:hover { background: #6d28d9; }
+.form-error { color: var(--danger); font-size: 0.68rem; margin-top: 6px; }
+
+/* SCHEDULE HEADER */
+.sched-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 18px; flex-wrap: wrap; gap: 10px; }
+
+/* TABLE */
+.tbl-wrap { border: 1px solid var(--border); border-radius: 14px; overflow-x: auto; background: white; }
+table { width: 100%; border-collapse: collapse; min-width: 600px; }
+th { background: #faf8f4; color: var(--muted); font-size: 0.6rem; text-transform: uppercase; letter-spacing: 0.1em; font-weight: 600; padding: 12px 13px; text-align: left; }
+td { padding: 12px 13px; font-size: 0.8rem; border-top: 1px solid var(--border); }
+td.right { text-align: right; }
+.btn-icon { background: none; border: none; cursor: pointer; font-size: 0.75rem; padding: 4px 8px; border-radius: 6px; transition: background 0.15s; }
+.btn-icon.edit { color: var(--accent); }
+.btn-icon.del { color: var(--danger); }
+.btn-icon.done { color: var(--success); }
+.btn-icon:hover { background: var(--surface2); }
+.badge { display: inline-block; padding: 3px 9px; border-radius: 20px; font-size: 0.62rem; font-weight: 600; }
+.badge-pending { background: #fde8e6; color: var(--danger); }
+.badge-done { background: #d5f0de; color: var(--success); }
+.badge-high { background: #fde8e6; color: var(--danger); }
+.badge-mid { background: #fef3cd; color: #a07000; }
+.badge-low { background: #d5f0de; color: var(--success); }
+.badge-admin { background: #dbeafe; color: var(--admin-color); }
+.badge-user { background: var(--surface2); color: var(--muted); }
+.reminder-chip { background: #fff3e0; color: #b06000; padding: 2px 7px; border-radius: 10px; font-size: 0.58rem; margin-left: 6px; }
+
+/* FILTERS */
+.filters { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 14px; }
+.filters input, .filters select { background: white; border: 1px solid var(--border); border-radius: 9px; padding: 7px 12px; font-size: 0.78rem; font-family: 'Sora', sans-serif; color: var(--text); }
+.btn-export { background: none; border: 1px solid var(--border); border-radius: 9px; padding: 7px 14px; font-size: 0.72rem; color: var(--muted); cursor: pointer; transition: all 0.2s; }
+.btn-export:hover { border-color: var(--accent); color: var(--accent); }
+.entries-count { font-size: 0.68rem; color: var(--muted); margin-left: auto; }
+
+/* TOTAL BAR */
+.total-bar { display: flex; justify-content: flex-end; gap: 12px; align-items: center; margin-top: 16px; padding: 12px 16px; background: white; border: 1px solid var(--border); border-radius: 12px; }
+.total-val { font-family: 'DM Mono', monospace; font-size: 1.15rem; color: var(--accent); font-weight: 600; }
+
+/* MODAL */
+.modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.45); backdrop-filter: blur(4px); z-index: 200; align-items: center; justify-content: center; }
+.modal-overlay.open { display: flex; }
+.modal { background: white; border-radius: 20px; padding: 26px; width: 100%; max-width: 480px; margin: 20px; max-height: 90vh; overflow-y: auto; }
+.modal-title { font-family: 'DM Serif Display', serif; font-size: 1.1rem; color: var(--accent); margin-bottom: 18px; }
+.modal-fields { display: flex; flex-direction: column; gap: 12px; }
+.modal-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 22px; }
+.btn-cancel { background: none; border: 1px solid var(--border); border-radius: 9px; padding: 9px 18px; font-family: 'Sora', sans-serif; cursor: pointer; font-size: 0.82rem; }
+.btn-save { background: var(--accent); border: none; border-radius: 9px; color: white; padding: 9px 22px; font-family: 'Sora', sans-serif; font-weight: 600; font-size: 0.82rem; cursor: pointer; }
+
+/* EDIT MODAL */
+.edit-modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.45); backdrop-filter: blur(4px); z-index: 300; align-items: center; justify-content: center; }
+.edit-modal-overlay.open { display: flex; }
+
+/* ADMIN */
+.admin-note { font-size: 0.7rem; color: var(--muted); margin-bottom: 14px; }
+.users-tbl { width: 100%; border-collapse: collapse; font-size: 0.78rem; }
+.users-tbl th, .users-tbl td { padding: 9px 11px; text-align: left; border-bottom: 1px solid var(--border); }
+.users-tbl th { font-size: 0.6rem; color: var(--muted); text-transform: uppercase; }
+.add-user-row { display: flex; gap: 8px; margin-top: 14px; flex-wrap: wrap; }
+.add-user-row input, .add-user-row select { flex: 1; min-width: 110px; background: var(--surface2); border: 1px solid var(--border); border-radius: 9px; padding: 8px 11px; font-size: 0.8rem; }
+
+/* LOADING */
+.loading { text-align: center; padding: 30px; color: var(--muted); font-size: 0.8rem; }
+
+/* ARCHIVE */
+.archive-color { color: #64748b; }
+.badge-archived { background: #e2e8f0; color: #64748b; }
+.archive-toggle { display: flex; align-items: center; gap: 10px; cursor: pointer; user-select: none; margin-bottom: 14px; }
+.archive-toggle-icon { font-size: 0.8rem; color: var(--muted); transition: transform 0.2s; }
+.archive-toggle-icon.open { transform: rotate(90deg); }
+.archive-note { font-size: 0.7rem; color: var(--muted); margin-bottom: 14px; background: #f1f5f9; border-radius: 8px; padding: 8px 12px; }
+.btn-restore { background: none; border: 1px solid var(--border); border-radius: 7px; padding: 4px 10px; font-size: 0.7rem; color: #64748b; cursor: pointer; }
+.btn-restore:hover { border-color: var(--accent); color: var(--accent); }
+
+/* HSM-CENTER CLOCK */
+.hsm-center-block {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  background: linear-gradient(135deg, #1a2e1a 0%, #243d24 100%);
+  border: 1px solid var(--accent);
+  border-radius: 14px;
+  padding: 10px 20px;
+  min-width: 190px;
+  box-shadow: 0 0 18px rgba(74,124,89,0.2), inset 0 1px 0 rgba(255,255,255,0.06);
+  position: relative;
+  overflow: hidden;
+}
+.hsm-center-block::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0; height: 1px;
+  background: linear-gradient(90deg, transparent, var(--accent2), transparent);
+  opacity: 0.7;
+}
+.hsm-center-name {
+  font-family: 'DM Serif Display', serif;
+  font-size: 1.55rem;
+  color: #e8f5e8;
+  letter-spacing: 0.04em;
+  line-height: 1;
+  text-shadow: 0 0 18px rgba(74,124,89,0.4);
+}
+.hsm-dot {
+  color: var(--accent2);
+  margin: 0 1px;
+}
+.hsm-center-sub {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 5px;
+}
+.hsm-sep {
+  color: #4a4640;
+  font-size: 0.75rem;
+}
+.hsm-clock {
+  font-family: 'DM Mono', monospace;
+  font-size: 0.78rem;
+  font-weight: 500;
+  color: var(--accent2);
+  letter-spacing: 0.08em;
+}
+.hsm-date {
+  font-size: 0.68rem;
+  color: #7a9a7a;
+  letter-spacing: 0.04em;
+}
+
+@media (max-width: 640px) {
+  header { flex-direction: column; align-items: flex-start; gap: 10px; }
+  .hdr-stats { margin-left: 0; }
+  .form-grid { grid-template-columns: 1fr; }
+  .add-user-row { flex-direction: column; }
+  .hsm-center-block { min-width: unset; width: 100%; align-items: flex-start; flex-direction: row; gap: 14px; padding: 8px 14px; }
+  .hsm-clock { font-size: 1.1rem; }
+}
+</style>
+</head>
+<body>
+
+<!-- AUTH -->
+<div id="auth-screen">
+  <div class="auth-card">
+    <div class="auth-logo">Ari-HSM</div>
+    <div class="auth-sub">REGJISTRI I PUNËS</div>
+    <div class="auth-tabs">
+      <div class="auth-tab active" onclick="switchAuthTab('login')">Hyr</div>
+      <div class="auth-tab" onclick="switchAuthTab('register')">Regjistrohu</div>
+    </div>
+    <div id="login-section">
+      <div class="field"><label>Email</label><input type="email" id="login-email" placeholder="email@example.com" /></div>
+      <div class="field"><label>Fjalëkalimi</label><input type="password" id="login-pass" placeholder="••••••" /></div>
+      <button class="btn-main" onclick="doLogin()">Hyr</button>
+    </div>
+    <div id="register-section" style="display:none;">
+      <div class="field"><label>Emri</label><input type="text" id="reg-name" placeholder="Emri juaj" /></div>
+      <div class="field"><label>Email</label><input type="email" id="reg-email" placeholder="email@example.com" /></div>
+      <div class="field"><label>Fjalëkalimi</label><input type="password" id="reg-pass" placeholder="min. 6 karaktere" /></div>
+      <div class="field"><label>Konfirmo fjalëkalimin</label><input type="password" id="reg-pass2" placeholder="••••••" /></div>
+      <button class="btn-main" onclick="doRegister()">Regjistrohu</button>
+    </div>
+    <div class="auth-error" id="auth-error"></div>
+  </div>
+</div>
+
+<!-- APP -->
+<div id="app">
+  <header>
+    <div>
+      <div class="hdr-brand">Regjistri i Punës</div>
+      <div class="hdr-sub">ARI-HSM</div>
+    </div>
+    <div class="user-chip">
+      <span id="hdr-email" style="font-size:0.75rem;"></span>
+      <span class="role-badge" id="hdr-role"></span>
+      <button class="logout-btn" onclick="doLogout()">Dil</button>
+    </div>
+
+    <!-- HSM-CENTER CLOCK -->
+    <div class="hsm-center-block">
+      <div class="hsm-center-name">HSM<span class="hsm-dot">&#xB7;</span>Center</div>
+      <div class="hsm-center-sub">
+        <span class="hsm-date" id="hsm-date">—</span>
+        <span class="hsm-sep">|</span>
+        <span class="hsm-clock" id="hsm-clock">00:00:00</span>
+      </div>
+    </div>
+
+    <div class="hdr-stats">
+      <div class="hdr-stat"><div class="hdr-stat-val" id="hdr-count">0</div><div class="hdr-stat-lbl">Sot</div></div>
+      <div class="hdr-stat"><div class="hdr-stat-val" id="hdr-today">0</div><div class="hdr-stat-lbl">Fitimi Sot</div></div>
+      <div class="hdr-stat"><div class="hdr-stat-val" id="hdr-total">0</div><div class="hdr-stat-lbl">Total</div></div>
+    </div>
+  </header>
+
+  <main>
+    <div class="notif-banner" id="notif-banner" style="display:none;">
+      <span>🔔 Aktivizo njoftimet për të marrë reminder për punët e planifikuara!</span>
+      <button class="btn-notif" onclick="requestNotif()">Aktivizo Njoftimet</button>
+    </div>
+
+    <!-- ADMIN PANEL -->
+    <div class="card" id="admin-panel" style="display:none;">
+      <div class="card-title admin">👑 Admin Panel</div>
+      <div class="admin-note">⚠️ Si admin mund të modifikoni dhe fshini çdo punë.</div>
+      <table class="users-tbl">
+        <thead><tr><th>Email</th><th>Roli</th><th>Veprime</th></tr></thead>
+        <tbody id="users-tbody"><tr><td colspan="3" class="loading">Duke ngarkuar...</td></tr></tbody>
+      </table>
+      <div class="add-user-row">
+        <input type="text" id="new-user-name" placeholder="Emri / Nikneimi" />
+        <input type="email" id="new-user-email" placeholder="Email i ri" />
+        <input type="password" id="new-user-pass" placeholder="Fjalëkalimi" />
+        <select id="new-user-role"><option value="user">User</option><option value="admin">Admin</option></select>
+        <button class="btn-add" onclick="addUserAdmin()">Shto</button>
+      </div>
+    </div>
+
+    <!-- SCHEDULE -->
+    <div class="card">
+      <div class="sched-header">
+        <div class="card-title schedule" style="margin-bottom:0;">📅 Punë të Planifikuara</div>
+        <button class="btn-schedule" onclick="openSchedModal()">+ Planifiko</button>
+      </div>
+      <div class="tbl-wrap">
+        <table>
+          <thead><tr><th>Data & Ora</th><th>Klienti</th><th>Pershkrimi</th><th>Prioriteti</th><th>Statusi</th><th>Veprime</th></tr></thead>
+          <tbody id="sched-tbody"><tr><td colspan="6" class="loading">Duke ngarkuar...</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ADD ENTRY -->
+    <div class="card">
+      <div class="card-title accent">📋 Punë për t'u Kryer</div>
+      <div class="form-grid">
+        <div class="f"><label>Data</label><input type="date" id="e-date" /></div>
+        <div class="f"><label>Klienti</label><input type="text" id="e-client" placeholder="Klienti" /></div>
+        <div class="f"><label>Pershkrimi</label><input type="text" id="e-desc" placeholder="pershkrimi" /></div>
+        <div class="f"><label>Sasia</label><input type="number" id="e-qty" value="1" step="0.01" min="0.01" /></div>
+        <div class="f"><label>Cmimi/Njesi</label><div class="price-wrap"><input type="number" id="e-price" placeholder="0" /><span class="price-unit">L</span></div></div>
+        <div class="f"><label>Statusi Pagesës</label>
+          <select id="e-payment">
+            <option value="per_tu_paguar">💰 Për t'u Paguar</option>
+            <option value="e_paguar">✅ E Paguar</option>
+          </select>
+        </div>
+        <div style="display:flex;align-items:flex-end;"><button class="btn-add" onclick="addEntry()">+ Shto</button></div>
+      </div>
+      <div class="form-error" id="entry-error"></div>
+    </div>
+
+    <!-- ENTRIES TABLE -->
+    <div class="filters">
+      <input type="text" id="f-text" placeholder="Kërko..." oninput="renderEntries()" />
+      <input type="text" id="f-client" placeholder="Klienti" oninput="renderEntries()" />
+      <input type="date" id="f-from" onchange="renderEntries()" />
+      <input type="date" id="f-to" onchange="renderEntries()" />
+      <button class="btn-export" onclick="exportCSV()">⬇ Eksporto CSV</button>
+      <span class="entries-count" id="entries-count"></span>
+    </div>
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th>Data</th><th>Klienti</th><th>Pershkrimi</th><th>Sasia</th><th>Cmimi</th><th>Totali</th><th>Pagesa</th><th>Perdoruesi</th><th>Veprime</th></tr></thead>
+        <tbody id="entries-tbody"><tr><td colspan="8" class="loading">Duke ngarkuar...</td></tr></tbody>
+      </table>
+    </div>
+    <div class="total-bar">
+      <span style="font-size:0.78rem;color:var(--muted);">Total i filtruar:</span>
+      <span class="total-val" id="filtered-total">0 ALL</span>
+    </div>
+
+    <!-- ARKIVA (vetëm Admin) -->
+    <div class="card" id="archive-panel" style="display:none; margin-top:10px;">
+      <div class="archive-toggle" onclick="toggleArchive()">
+        <span class="archive-toggle-icon" id="archive-icon">▶</span>
+        <div class="card-title archive-color" style="margin-bottom:0;">🗄 Arkiva — Punë >30 ditë</div>
+      </div>
+      <div id="archive-content" style="display:none;">
+        <div class="archive-note">📌 Këto punë janë mbi 30 ditë të vjetra dhe janë ruajtur automatikisht në arkivë. Mund t'i ekspozoni ose fshini.</div>
+        <div class="filters">
+          <input type="text" id="af-text" placeholder="Kërko në arkivë..." oninput="renderArchive()" />
+          <input type="date" id="af-from" onchange="renderArchive()" />
+          <input type="date" id="af-to" onchange="renderArchive()" />
+          <button class="btn-export" onclick="exportArchiveCSV()">⬇ Eksporto Arkivën</button>
+          <span class="entries-count" id="archive-count"></span>
+        </div>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>Data</th><th>Klienti</th><th>Pershkrimi</th><th>Sasia</th><th>Cmimi</th><th>Totali</th><th>Pagesa</th><th>Perdoruesi</th><th>Veprime</th></tr></thead>
+            <tbody id="archive-tbody"><tr><td colspan="8" class="loading">Duke ngarkuar...</td></tr></tbody>
+          </table>
+        </div>
+        <div class="total-bar">
+          <span style="font-size:0.78rem;color:var(--muted);">Total arkivë:</span>
+          <span class="total-val" id="archive-total" style="color:#64748b;">0 ALL</span>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- SCHEDULE MODAL -->
+<div class="modal-overlay" id="sched-modal">
+  <div class="modal">
+    <div class="modal-title">📅 Planifiko Punë</div>
+    <div class="modal-fields">
+      <div class="f"><label>Data</label><input type="date" id="sm-date" /></div>
+      <div class="f"><label>Ora</label><input type="time" id="sm-time" /></div>
+      <div class="f"><label>Klienti</label><input type="text" id="sm-client" /></div>
+      <div class="f"><label>Pershkrimi</label><textarea id="sm-desc" rows="2"></textarea></div>
+      <div class="f"><label>Prioriteti</label>
+        <select id="sm-priority">
+          <option value="I Larte">🔴 I Lartë</option>
+          <option value="Mesatar">🟡 Mesatar</option>
+          <option value="I Ulet">🟢 I Ulët</option>
+        </select>
+      </div>
+      <div class="f"><label>Reminder (para)</label>
+        <select id="sm-reminder">
+          <option value="5">5 minuta</option>
+          <option value="10">10 minuta</option>
+          <option value="15" selected>15 minuta</option>
+          <option value="30">30 minuta</option>
+          <option value="60">1 orë</option>
+        </select>
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeSchedModal()">Anulo</button>
+      <button class="btn-save" onclick="saveSchedule()">Ruaj</button>
+    </div>
+  </div>
+</div>
+
+<!-- EDIT ENTRY MODAL -->
+<div class="edit-modal-overlay" id="edit-modal">
+  <div class="modal">
+    <div class="modal-title">✎ Ndrysho Punën</div>
+    <div class="modal-fields">
+      <div class="f"><label>Data</label><input type="date" id="em-date" /></div>
+      <div class="f"><label>Klienti</label><input type="text" id="em-client" /></div>
+      <div class="f"><label>Pershkrimi</label><input type="text" id="em-desc" /></div>
+      <div class="f"><label>Sasia</label><input type="number" id="em-qty" step="0.01" /></div>
+      <div class="f"><label>Cmimi/Njesi (L)</label><input type="number" id="em-price" /></div>
+      <div class="f"><label>Statusi Pagesës</label>
+        <select id="em-payment">
+          <option value="per_tu_paguar">💰 Për t'u Paguar</option>
+          <option value="e_paguar">✅ E Paguar</option>
+        </select>
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeEditModal()">Anulo</button>
+      <button class="btn-save" onclick="saveEdit()">Ruaj Ndryshimet</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// =============================================
+// KONFIGURO SUPABASE — NDRYSHO KETO 2 VLERA!
+// =============================================
+const SUPABASE_URL = 'https://wtofrlhibmhslxdwaotb.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind0b2ZybGhpYm1oc2x4ZHdhb3RiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk0NDc1MzIsImV4cCI6MjA5NTAyMzUzMn0.yq14UM3Vh6W9BzwiJuJwPEf-uXT54qd1ohaG9-9sUGA';// =============================================
+
+const { createClient } = supabase;
+const sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+let currentUser = null;
+let currentRole = 'user';
+let allEntries = [];
+let allArchivedEntries = [];
+let allSchedules = [];
+let notifGranted = false;
+let reminderTimer = null;
+let editingEntryId = null;
+let userNames = {};
+let currentUserName = '';
+
+function setAuthError(msg) {
+  document.getElementById('auth-error').textContent = msg;
+}
+
+// --- AUTH ---
+function switchAuthTab(tab) {
+  document.querySelectorAll('.auth-tab').forEach((t, i) => t.classList.toggle('active', (i === 0) === (tab === 'login')));
+  document.getElementById('login-section').style.display = tab === 'login' ? '' : 'none';
+  document.getElementById('register-section').style.display = tab === 'register' ? '' : 'none';
+  setAuthError('');
+}
+
+async function doLogin() {
+  const email = document.getElementById('login-email').value.trim();
+  const pass = document.getElementById('login-pass').value;
+  if (!email || !pass) { setAuthError('Ploteso email dhe fjalëkalim'); return; }
+  const { data, error } = await sb.auth.signInWithPassword({ email, password: pass });
+  if (error) { setAuthError('Email ose fjalëkalim i gabuar'); return; }
+
+  
+  await initApp(data.user);
+}
+
+
+async function doRegister() {
+  const email = document.getElementById('reg-email').value.trim();
+  const name = document.getElementById('reg-name').value.trim();
+  const pass = document.getElementById('reg-pass').value;
+  const pass2 = document.getElementById('reg-pass2').value;
+  if (!email || !pass || !name) { setAuthError('Ploteso të gjitha fushat'); return; }
+  if (pass !== pass2) { setAuthError('Fjalëkalimet nuk përputhen'); return; }
+  if (pass.length < 6) { setAuthError('Fjalëkalimi min. 6 karaktere'); return; }
+  const { data, error } = await sb.auth.signUp({ email, password: pass });
+  if (error) { setAuthError(error.message); return; }
+  await sb.from('user_roles').insert({ user_id: data.user.id, role: 'user', name: name });
+  setAuthError('');
+  await initApp(data.user);
+}
+
+async function doLogout() {
+  await sb.auth.signOut();
+  currentUser = null;
+  if (reminderTimer) clearInterval(reminderTimer);
+  document.getElementById('app').style.display = 'none';
+  document.getElementById('auth-screen').style.display = 'flex';
+}
+
+// --- INIT ---
+async function initApp(user) {
+  currentUser = user;
+  document.getElementById('auth-screen').style.display = 'none';
+  document.getElementById('app').style.display = 'block';
+
+  const { data: roleData } = await sb
+    .from('user_roles')
+    .select('name, role')
+    .eq('user_id', user.id)
+    .single();
+
+  currentUserName = roleData?.name || user.email.split('@')[0];
+  document.getElementById('hdr-email').textContent = currentUserName;
+  document.getElementById('e-date').value = today();
+
+  currentRole = roleData?.role || 'user';
+  const roleEl = document.getElementById('hdr-role');
+  roleEl.textContent = currentRole.toUpperCase();
+  if (currentRole === 'admin') { roleEl.classList.add('admin'); document.getElementById('admin-panel').style.display = 'block'; document.getElementById('archive-panel').style.display = 'block'; loadUsers(); }
+
+  if ('Notification' in window) {
+    if (Notification.permission === 'granted') notifGranted = true;
+    else if (Notification.permission !== 'denied') document.getElementById('notif-banner').style.display = 'flex';
+  }
+
+  await loadEntries();
+  await loadSchedules();
+  startReminderChecker();
+}
+
+// --- ENTRIES ---
+async function loadEntries() {
+  const { data } = await sb.from('entries').select('*').order('date', { ascending: false });
+  const all = data || [];
+
+  // Split: >30 ditë → arkivë, jo → aktive
+  const cutoff = new Date();
+  cutoff.setDate(cutoff.getDate() - 30);
+  const cutoffStr = cutoff.toISOString().split('T')[0];
+
+  allEntries = all.filter(e => e.date >= cutoffStr);
+  allArchivedEntries = all.filter(e => e.date < cutoffStr);
+
+  // Merr emrat nga user_roles për të gjithë userët
+  const { data: roles } = await sb.from('user_roles').select('user_id, name');
+  (roles || []).forEach(r => { if (r.user_id && r.name) userNames[r.user_id] = r.name; });
+
+  renderEntries();
+  renderArchive();
+  updateHeader();
+}
+
+function renderEntries() {
+  const tbody = document.getElementById('entries-tbody');
+  const ft = document.getElementById('f-text').value.toLowerCase();
+  const fc = document.getElementById('f-client').value.toLowerCase();
+  const ff = document.getElementById('f-from').value;
+  const ft2 = document.getElementById('f-to').value;
+
+  let filtered = allEntries.filter(e => {
+    const mt = !ft || e.description.toLowerCase().includes(ft) || e.client.toLowerCase().includes(ft);
+    const mc = !fc || e.client.toLowerCase().includes(fc);
+    const mf = !ff || e.date >= ff;
+    const mt2 = !ft2 || e.date <= ft2;
+    return mt && mc && mf && mt2;
+  });
+
+  document.getElementById('entries-count').textContent = filtered.length + ' hyrje';
+  const sum = filtered.reduce((s, e) => s + (e.total || e.quantity * e.unit_price), 0);
+  document.getElementById('filtered-total').textContent = fmtPrice(sum);
+
+  if (!filtered.length) { tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:30px;color:var(--muted);">Asnjë punë e gjetur</td></tr>'; return; }
+
+  tbody.innerHTML = filtered.map(e => {
+    const canEdit = currentRole === 'admin' || e.user_id === currentUser.id;
+    const total = e.total || (e.quantity * e.unit_price);
+    return `<tr>
+      <td>${fmtDate(e.date)}</td>
+      <td>${esc(e.client)}</td>
+      <td>${esc(e.description)}</td>
+      <td class="right">${e.quantity}</td>
+      <td class="right">${fmtPrice(e.unit_price)}</td>
+      <td class="right"><strong>${fmtPrice(total)}</strong></td>
+      <td><span class="badge ${e.payment_status === 'e_paguar' ? 'badge-done' : 'badge-pending'}" style="cursor:pointer" onclick="togglePayment('${e.id}','${e.payment_status}')">${e.payment_status === 'e_paguar' ? '✅ E Paguar' : '💰 Pa Paguar'}</span></td>
+      <td><span class="badge ${e.user_email === currentUser.email ? 'badge-admin' : 'badge-user'}">${esc(userNames[e.user_id] || e.user_name || '')}</span></td>
+      <td class="right">
+        ${canEdit ? `<button class="btn-icon edit" onclick="openEditModal('${e.id}')">✎</button>` : ''}
+        ${canEdit ? `<button class="btn-icon del" onclick="deleteEntry('${e.id}')">🗑</button>` : ''}
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+async function addEntry() {
+  const date = document.getElementById('e-date').value;
+  const client = document.getElementById('e-client').value.trim();
+  const desc = document.getElementById('e-desc').value.trim();
+  const qty = parseFloat(document.getElementById('e-qty').value);
+  const price = parseFloat(document.getElementById('e-price').value);
+  const errEl = document.getElementById('entry-error');
+
+  if (!date || !client || !desc || isNaN(qty) || qty <= 0 || isNaN(price) || price < 0) {
+    errEl.textContent = 'Ploteso të gjitha fushat!'; return;
+  }
+  errEl.textContent = '';
+  const payment_status = document.getElementById('e-payment').value;
+  const { error } = await sb.from('entries').insert({
+    user_id: currentUser.id, user_email: currentUser.email,
+    user_name: currentUserName,
+    date, client, description: desc, quantity: qty, unit_price: price,
+    payment_status
+  });
+  if (error) { errEl.textContent = 'Gabim: ' + error.message; return; }
+  document.getElementById('e-client').value = '';
+  document.getElementById('e-desc').value = '';
+  document.getElementById('e-qty').value = '1';
+  document.getElementById('e-price').value = '';
+  await loadEntries();
+}
+
+async function deleteEntry(id) {
+  if (!confirm('Fshi këtë punë?')) return;
+  await sb.from('entries').delete().eq('id', id);
+  await loadEntries();
+}
+
+async function togglePayment(id, currentStatus) {
+  const newStatus = currentStatus === 'e_paguar' ? 'per_tu_paguar' : 'e_paguar';
+  await sb.from('entries').update({ payment_status: newStatus }).eq('id', id);
+  await loadEntries();
+}
+
+function openEditModal(id) {
+  const e = allEntries.find(x => x.id === id);
+  if (!e) return;
+  editingEntryId = id;
+  document.getElementById('em-date').value = e.date;
+  document.getElementById('em-client').value = e.client;
+  document.getElementById('em-desc').value = e.description;
+  document.getElementById('em-qty').value = e.quantity;
+  document.getElementById('em-price').value = e.unit_price;
+  document.getElementById('em-payment').value = e.payment_status || 'per_tu_paguar';
+  document.getElementById('edit-modal').classList.add('open');
+}
+
+function closeEditModal() { document.getElementById('edit-modal').classList.remove('open'); editingEntryId = null; }
+
+async function saveEdit() {
+  if (!editingEntryId) return;
+  const date = document.getElementById('em-date').value;
+  const client = document.getElementById('em-client').value.trim();
+  const desc = document.getElementById('em-desc').value.trim();
+  const qty = parseFloat(document.getElementById('em-qty').value);
+  const price = parseFloat(document.getElementById('em-price').value);
+  if (!date || !client || !desc || isNaN(qty) || isNaN(price)) return;
+  const payment_status = document.getElementById('em-payment').value;
+  await sb.from('entries').update({ date, client, description: desc, quantity: qty, unit_price: price, payment_status }).eq('id', editingEntryId);
+  closeEditModal();
+  await loadEntries();
+}
+
+// --- SCHEDULES ---
+async function loadSchedules() {
+  const { data } = await sb.from('schedules').select('*').order('date').order('time');
+  allSchedules = data || [];
+  renderSchedules();
+}
+
+function renderSchedules() {
+  const tbody = document.getElementById('sched-tbody');
+  if (!allSchedules.length) { tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:30px;color:var(--muted);">Nuk ka punë të planifikuara</td></tr>'; return; }
+  tbody.innerHTML = allSchedules.map(s => {
+    const canEdit = currentRole === 'admin' || s.user_id === currentUser.id;
+    const priClass = s.priority === 'I Larte' ? 'badge-high' : s.priority === 'I Ulet' ? 'badge-low' : 'badge-mid';
+    return `<tr>
+      <td>${fmtDate(s.date)} ${s.time?.substring(0,5)}<span class="reminder-chip">⏰ ${s.reminder_minutes}'</span></td>
+      <td>${esc(s.client)}</td>
+      <td>${esc((s.description||'').substring(0,60))}</td>
+      <td><span class="badge ${priClass}">${s.priority}</span></td>
+      <td><span class="badge ${s.status === 'completed' ? 'badge-done' : 'badge-pending'}">${s.status === 'completed' ? '✓ Përfunduar' : '⏳ Në Pritje'}</span></td>
+      <td class="right">
+        ${s.status !== 'completed' ? `<button class="btn-icon done" onclick="completeSchedule('${s.id}')">✔</button>` : ''}
+        ${canEdit ? `<button class="btn-icon del" onclick="deleteSchedule('${s.id}')">🗑</button>` : ''}
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+function openSchedModal() {
+  document.getElementById('sm-date').value = today();
+  document.getElementById('sm-time').value = '09:00';
+  document.getElementById('sm-client').value = '';
+  document.getElementById('sm-desc').value = '';
+  document.getElementById('sm-priority').value = 'Mesatar';
+  document.getElementById('sm-reminder').value = '15';
+  document.getElementById('sched-modal').classList.add('open');
+}
+function closeSchedModal() { document.getElementById('sched-modal').classList.remove('open'); }
+
+async function saveSchedule() {
+  const date = document.getElementById('sm-date').value;
+  const time = document.getElementById('sm-time').value;
+  const client = document.getElementById('sm-client').value.trim();
+  const desc = document.getElementById('sm-desc').value.trim();
+  const priority = document.getElementById('sm-priority').value;
+  const reminder = parseInt(document.getElementById('sm-reminder').value);
+  if (!date || !time || !client || !desc) { alert('Ploteso të gjitha fushat!'); return; }
+  const { error } = await sb.from('schedules').insert({
+    user_id: currentUser.id, user_email: currentUser.email,
+    date, time, client, description: desc, priority,
+    status: 'pending', reminder_minutes: reminder, reminded: false
+  });
+  if (error) { alert('Gabim: ' + error.message); return; }
+  closeSchedModal();
+  await loadSchedules();
+  sendNotif('Puna u planifikua!', client + ' — ' + desc);
+}
+
+async function completeSchedule(id) {
+  await sb.from('schedules').update({ status: 'completed' }).eq('id', id);
+  const s = allSchedules.find(x => x.id === id);
+  if (s) sendNotif('Puna u krye! ✓', s.client + ' — ' + s.description);
+  await loadSchedules();
+}
+
+async function deleteSchedule(id) {
+  if (!confirm('Fshi?')) return;
+  await sb.from('schedules').delete().eq('id', id);
+  await loadSchedules();
+}
+
+// --- HEADER STATS ---
+function updateHeader() {
+  const t = today();
+  const todayE = allEntries.filter(e => e.date === t);
+  const todaySum = todayE.reduce((s, e) => s + (e.total || e.quantity * e.unit_price), 0);
+  const totalSum = allEntries.reduce((s, e) => s + (e.total || e.quantity * e.unit_price), 0);
+  document.getElementById('hdr-count').textContent = todayE.length;
+  document.getElementById('hdr-today').textContent = fmtPrice(todaySum);
+  document.getElementById('hdr-total').textContent = fmtPrice(totalSum);
+}
+
+// --- ADMIN ---
+async function loadUsers() {
+  const { data } = await sb.from('user_roles').select('*');
+  const tbody = document.getElementById('users-tbody');
+  if (!data || !data.length) { tbody.innerHTML = '<tr><td colspan="3" style="text-align:center">Nuk ka perdorues</td></tr>'; return; }
+  tbody.innerHTML = data.map(u => `<tr><td>${u.user_id}</td><td><span class="badge ${u.role === 'admin' ? 'badge-admin' : 'badge-user'}">${u.role}</span></td><td><button class="btn-icon del" onclick="removeUserRole('${u.user_id}')">🗑</button></td></tr>`).join('');
+}
+
+async function addUserAdmin() {
+  const name = document.getElementById('new-user-name').value.trim();
+  const email = document.getElementById('new-user-email').value.trim();
+  const pass = document.getElementById('new-user-pass').value;
+  const role = document.getElementById('new-user-role').value;
+  if (!name || !email || !pass) { alert('Ploteso emrin, email dhe fjalëkalim'); return; }
+  const { data, error } = await sb.auth.signUp({ email, password: pass });
+  if (error) { alert('Gabim: ' + error.message); return; }
+  await sb.from('user_roles').insert({ user_id: data.user.id, role, name });
+  document.getElementById('new-user-name').value = '';
+  document.getElementById('new-user-email').value = '';
+  document.getElementById('new-user-pass').value = '';
+  await loadUsers();
+  alert('Perdoruesi u shtua!');
+}
+
+async function removeUserRole(userId) {
+  if (!confirm('Fshi rolin e këtij perdoruesi?')) return;
+  await sb.from('user_roles').delete().eq('user_id', userId);
+  await loadUsers();
+}
+
+// --- NOTIFICATIONS ---
+function requestNotif() {
+  Notification.requestPermission().then(perm => {
+    if (perm === 'granted') {
+      notifGranted = true;
+      document.getElementById('notif-banner').style.display = 'none';
+      sendNotif('Njoftimet u aktivizuan! 🔔', 'Do të merrni reminder për punët e planifikuara.');
+    }
+  });
+}
+
+function sendNotif(title, body) {
+  if (notifGranted) new Notification(title, { body, icon: '' });
+}
+
+function startReminderChecker() {
+  if (reminderTimer) clearInterval(reminderTimer);
+  reminderTimer = setInterval(checkReminders, 30000);
+  checkReminders();
+}
+
+async function checkReminders() {
+  const now = new Date();
+  for (const s of allSchedules) {
+    if (s.status === 'completed' || s.reminded) continue;
+    const scheduledTime = new Date(s.date + 'T' + s.time);
+    const reminderTime = new Date(scheduledTime.getTime() - s.reminder_minutes * 60000);
+    if (now >= reminderTime) {
+      sendNotif('🔔 Reminder: ' + s.client, s.description + '\n⏰ ' + s.time?.substring(0,5));
+      await sb.from('schedules').update({ reminded: true }).eq('id', s.id);
+      s.reminded = true;
+    }
+  }
+}
+
+// --- EXPORT CSV ---
+function exportCSV() {
+  if (!allEntries.length) { alert('Nuk ka të dhëna'); return; }
+  const rows = [['Data', 'Klienti', 'Pershkrimi', 'Sasia', 'Cmimi/Njesi', 'Totali', 'Perdoruesi']];
+  allEntries.forEach(e => rows.push([e.date, e.client, e.description, e.quantity, e.unit_price, e.total || e.quantity * e.unit_price, e.user_email || '']));
+  const csv = rows.map(r => r.map(v => '"' + String(v).replace(/"/g, '""') + '"').join(',')).join('\n');
+  const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'pune_' + today() + '.csv';
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+// --- ARCHIVE ---
+function toggleArchive() {
+  const content = document.getElementById('archive-content');
+  const icon = document.getElementById('archive-icon');
+  const isOpen = content.style.display !== 'none';
+  content.style.display = isOpen ? 'none' : 'block';
+  icon.classList.toggle('open', !isOpen);
+}
+
+function renderArchive() {
+  const tbody = document.getElementById('archive-tbody');
+  if (!tbody) return;
+
+  const ft = (document.getElementById('af-text')?.value || '').toLowerCase();
+  const ff = document.getElementById('af-from')?.value || '';
+  const ft2 = document.getElementById('af-to')?.value || '';
+
+  let filtered = allArchivedEntries.filter(e => {
+    const mt = !ft || e.description.toLowerCase().includes(ft) || e.client.toLowerCase().includes(ft);
+    const mf = !ff || e.date >= ff;
+    const mt2 = !ft2 || e.date <= ft2;
+    return mt && mf && mt2;
+  });
+
+  document.getElementById('archive-count').textContent = filtered.length + ' hyrje';
+  const sum = filtered.reduce((s, e) => s + (e.total || e.quantity * e.unit_price), 0);
+  document.getElementById('archive-total').textContent = fmtPrice(sum);
+
+  if (!filtered.length) {
+    tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:30px;color:var(--muted);">Arkiva është bosh</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = filtered.map(e => {
+    const total = e.total || (e.quantity * e.unit_price);
+    return `<tr style="opacity:0.8;">
+      <td>${fmtDate(e.date)}</td>
+      <td>${esc(e.client)}</td>
+      <td>${esc(e.description)}</td>
+      <td class="right">${e.quantity}</td>
+      <td class="right">${fmtPrice(e.unit_price)}</td>
+      <td class="right"><strong>${fmtPrice(total)}</strong></td>
+      <td><span class="badge ${e.payment_status === 'e_paguar' ? 'badge-done' : 'badge-pending'}">${e.payment_status === 'e_paguar' ? '✅ E Paguar' : '💰 Pa Paguar'}</span></td>
+      <td><span class="badge badge-archived">${esc(userNames[e.user_id] || e.user_name || '')}</span></td>
+      <td class="right">
+        <button class="btn-icon del" onclick="deleteArchivedEntry('${e.id}')" title="Fshi">🗑</button>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+async function deleteArchivedEntry(id) {
+  if (!confirm('Fshi përgjithmonë këtë punë nga arkiva?')) return;
+  await sb.from('entries').delete().eq('id', id);
+  await loadEntries();
+}
+
+function exportArchiveCSV() {
+  if (!allArchivedEntries.length) { alert('Arkiva është bosh'); return; }
+  const rows = [['Data', 'Klienti', 'Pershkrimi', 'Sasia', 'Cmimi/Njesi', 'Totali', 'Perdoruesi']];
+  allArchivedEntries.forEach(e => rows.push([e.date, e.client, e.description, e.quantity, e.unit_price, e.total || e.quantity * e.unit_price, e.user_email || '']));
+  const csv = rows.map(r => r.map(v => '"' + String(v).replace(/"/g, '""') + '"').join(',')).join('\n');
+  const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'arkiva_' + today() + '.csv';
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+// --- HELPERS ---
+function today() { return new Date().toISOString().split('T')[0]; }
+function fmtDate(str) { if (!str) return ''; const [y,m,d] = str.split('-'); return `${d}.${m}.${y}`; }
+function fmtPrice(n) { return 'L ' + Number(n || 0).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ','); }
+function esc(s) { return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+// --- HSM-CENTER CLOCK ---
+function updateHSMClock() {
+  const now = new Date();
+  const hh = String(now.getHours()).padStart(2, '0');
+  const mm = String(now.getMinutes()).padStart(2, '0');
+  const ss = String(now.getSeconds()).padStart(2, '0');
+  const clockEl = document.getElementById('hsm-clock');
+  if (clockEl) clockEl.textContent = `${hh}:${mm}:${ss}`;
+
+  const days = ['E Diel','E Hënë','E Martë','E Mërkurë','E Enjte','E Premte','E Shtunë'];
+  const months = ['Jan','Shk','Mar','Pri','Maj','Qer','Kor','Gus','Sht','Tet','Nën','Dhj'];
+  const dateStr = `${days[now.getDay()]}, ${now.getDate()} ${months[now.getMonth()]} ${now.getFullYear()}`;
+  const dateEl = document.getElementById('hsm-date');
+  if (dateEl) dateEl.textContent = dateStr;
+}
+updateHSMClock();
+setInterval(updateHSMClock, 1000);
+
+// --- AUTO LOGIN CHECK ---
+(async () => {
+  const { data } = await sb.auth.getSession();
+  if (data?.session?.user) await initApp(data.session.user);
+  else { document.getElementById('auth-screen').style.display = 'flex'; }
+})();
+
+sb.auth.onAuthStateChange(async (event, session) => {
+  if (event === 'SIGNED_OUT') {
+    document.getElementById('app').style.display = 'none';
+    document.getElementById('auth-screen').style.display = 'flex';
+  }
+});
+</script>
+</body>
+</html>
