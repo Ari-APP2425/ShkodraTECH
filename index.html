@@ -9,6 +9,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.2/js/bootstrap.bundle.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 <style>
   :root {
     --primary: #1a56db;
@@ -758,98 +759,65 @@ async function downloadPDF() { const d=collectData(); if(!validate(d)) return; a
 async function downloadPDFFromData(d) { if(!d) return; await generatePDF(d); }
 
 async function generatePDF(d) {
-  const {jsPDF}=window.jspdf;
-  const doc=new jsPDF({orientation:'portrait',unit:'mm',format:'a4'});
-  const pageW=210,margin=15,colRight=135;
-  let y=margin;
-  const accentRGB=d.isFature?[26,86,219]:[14,159,110];
-  const headerRGB=d.isFature?[30,58,95]:[6,95,70];
-  const docLabel=d.isFature?'FATURE':'PREVENTIV';
-  doc.setFillColor(...headerRGB);
-  doc.rect(0,0,pageW,28,'F');
-  const useLogo=d.logoBase64||logoBase64;
-  if(useLogo){try{doc.addImage(useLogo,useLogo.includes('png')?'PNG':'JPEG',margin,2,65,24);}catch(e){doc.setTextColor(255,255,255);doc.setFontSize(14);doc.setFont(undefined,'bold');doc.text(d.leshuesi?.emri||'',margin,18);}}
-  else{doc.setTextColor(255,255,255);doc.setFontSize(14);doc.setFont(undefined,'bold');doc.text(d.leshuesi?.emri||'',margin,18);}
-  doc.setTextColor(255,255,255);doc.setFontSize(22);doc.setFont(undefined,'bold');
-  doc.text(docLabel,pageW-margin,18,{align:'right'});
-  y=38;
-  doc.setFontSize(9);doc.setFont(undefined,'normal');doc.setTextColor(80,80,80);
-  const metaLines=[['Nr.:',d.nr_fatura],['Data:',d.data_fatura],...(d.isFature&&d.data_skadimit?[['Afati:',d.data_skadimit]]:[]),...(!d.isFature?[['Validiteti:',d.validitet]]:[]),['Monedha:',d.monedha]];
-  metaLines.forEach(([label,val])=>{doc.setFont(undefined,'bold');doc.text(label,colRight+20,y);doc.setFont(undefined,'normal');doc.text(val||'',pageW-margin,y,{align:'right'});y+=5.5;});
-  const partyY=38;
-  doc.setFillColor(248,250,252);doc.roundedRect(margin,partyY,80,40,2,2,'F');
-  doc.setDrawColor(...accentRGB);doc.setLineWidth(0.8);doc.line(margin,partyY,margin,partyY+40);
-  doc.setFontSize(7);doc.setFont(undefined,'bold');doc.setTextColor(107,114,128);doc.text('LESHUAR NGA',margin+4,partyY+6);
-  doc.setFontSize(9.5);doc.setFont(undefined,'bold');doc.setTextColor(30,30,30);doc.text(d.leshuesi?.emri||'',margin+4,partyY+13);
-  doc.setFontSize(8.5);doc.setFont(undefined,'normal');doc.setTextColor(60,60,60);
-  let py=partyY+19;
-  if(d.leshuesi?.nipt){doc.text('NIPT: '+d.leshuesi.nipt,margin+4,py);py+=5;}
-  if(d.leshuesi?.adresa){doc.text(d.leshuesi.adresa,margin+4,py);py+=5;}
-  if(d.leshuesi?.tel){doc.text(d.leshuesi.tel,margin+4,py);py+=5;}
-  if(d.leshuesi?.email){doc.text(d.leshuesi.email,margin+4,py);}
-  const bx=margin+86;
-  doc.setFillColor(248,250,252);doc.roundedRect(bx,partyY,80,40,2,2,'F');
-  doc.setDrawColor(...accentRGB);doc.setLineWidth(0.8);doc.line(bx,partyY,bx,partyY+40);
-  doc.setFontSize(7);doc.setFont(undefined,'bold');doc.setTextColor(107,114,128);doc.text(d.isFature?'FATURUAR PER':'PERGATITUR PER',bx+4,partyY+6);
-  doc.setFontSize(9.5);doc.setFont(undefined,'bold');doc.setTextColor(30,30,30);doc.text(d.bleres?.emri||'—',bx+4,partyY+13);
-  doc.setFontSize(8.5);doc.setFont(undefined,'normal');doc.setTextColor(60,60,60);
-  let bby=partyY+19;
-  if(d.bleres?.nipt){doc.text('NIPT: '+d.bleres.nipt,bx+4,bby);bby+=5;}
-  if(d.bleres?.adresa){doc.text(d.bleres.adresa,bx+4,bby);bby+=5;}
-  if(d.bleres?.tel){doc.text(d.bleres.tel,bx+4,bby);bby+=5;}
-  if(d.bleres?.email){doc.text(d.bleres.email,bx+4,bby);}
-  y=partyY+48;
-  const filteredRows=(d.rows||[]).filter(r=>r.desc||r.total>0);
-  doc.autoTable({startY:y,margin:{left:margin,right:margin},head:[['#','Pershkrimi','Sasia','Njesia','Cmimi','Totali']],body:filteredRows.map((r,i)=>[i+1,r.desc||'—',r.qty,r.unit||'—',d.sym+' '+r.price.toFixed(2),d.sym+' '+r.total.toFixed(2)]),styles:{fontSize:9,cellPadding:3},headStyles:{fillColor:headerRGB,textColor:255,fontStyle:'bold',fontSize:8},columnStyles:{0:{cellWidth:10,halign:'center'},1:{cellWidth:'auto'},2:{cellWidth:16,halign:'center'},3:{cellWidth:18,halign:'center'},4:{cellWidth:28,halign:'right'},5:{cellWidth:28,halign:'right',fontStyle:'bold'}},alternateRowStyles:{fillColor:[248,250,252]}});
-  y=doc.lastAutoTable.finalY+6;
-  const tBoxX=pageW-margin-70;
-  const totalsData=[['Nentotali:',d.sym+' '+d.sub.toFixed(2)],...(d.discVal>0?[['Zbritje ('+d.disc+'%):','- '+d.sym+' '+d.discVal.toFixed(2)]]:[]),...(d.tvshOn?[['TVSH ('+d.tvshRate+'%):',d.sym+' '+d.tvshVal.toFixed(2)]]:[])];
-  doc.setFontSize(9);doc.setFont(undefined,'normal');doc.setTextColor(80,80,80);
-  totalsData.forEach(([label,val])=>{doc.text(label,tBoxX,y);doc.text(val,pageW-margin,y,{align:'right'});y+=5.5;});
-  doc.setDrawColor(...accentRGB);doc.setLineWidth(0.5);doc.line(tBoxX,y,pageW-margin,y);y+=5;
-  doc.setFontSize(12);doc.setFont(undefined,'bold');doc.setTextColor(...accentRGB);
-  doc.text('TOTALI:',tBoxX,y);doc.text(d.sym+' '+d.total.toFixed(2),pageW-margin,y,{align:'right'});y+=10;
-  if(d.shenime?.trim()){const noteLines=doc.splitTextToSize(d.shenime.trim(),pageW-2*margin-6);const noteH=noteLines.length*4.5+10;doc.setFillColor(255,251,235);doc.roundedRect(margin,y,pageW-2*margin,noteH,2,2,'F');doc.setDrawColor(245,158,11);doc.setLineWidth(0.8);doc.line(margin,y,margin,y+noteH);doc.setFontSize(8);doc.setFont(undefined,'bold');doc.setTextColor(80,60,0);doc.text('Shenime:',margin+4,y+6);doc.setFont(undefined,'normal');doc.setTextColor(60,60,60);noteLines.forEach((line,i)=>doc.text(line,margin+4,y+12+(i*4.5)));y+=noteH+8;}
-  // -- CONTACT SECTION
-  const contactBoxH = d.isFature ? 20 : 26;
-  const safeFooterY = 283;
-  // Add new page if not enough space for contact box + footer
-  if(y + contactBoxH + 12 > safeFooterY) {
-    doc.addPage();
-    y = 20;
-    // Redraw header bar on new page
-    doc.setFillColor(...headerRGB);
-    doc.rect(0,0,pageW,8,'F');
+  const {jsPDF} = window.jspdf;
+  const filename = (d.isFature ? 'Fatura-' : 'Preventiv-') + d.nr_fatura + '.pdf';
+
+  // Build a hidden render container with the invoice HTML
+  const container = document.createElement('div');
+  container.style.cssText = 'position:fixed;left:-9999px;top:0;width:794px;background:#fff;font-family:Segoe UI,Arial,sans-serif;font-size:14px;color:#111827;padding:40px;box-sizing:border-box;';
+  container.innerHTML = buildPreviewHTML(d);
+  document.body.appendChild(container);
+
+  // Wait for images to load
+  const imgs = container.querySelectorAll('img');
+  await Promise.all(Array.from(imgs).map(img => new Promise(res => {
+    if (img.complete) res(); else { img.onload = res; img.onerror = res; }
+  })));
+
+  // Render to canvas
+  const canvas = await html2canvas(container, {
+    scale: 2,
+    useCORS: true,
+    backgroundColor: '#ffffff',
+    width: 794,
+    windowWidth: 794
+  });
+  document.body.removeChild(container);
+
+  // A4 dimensions in mm
+  const pageW = 210, pageH = 297;
+  const imgW = pageW;
+  const imgH = (canvas.height * pageW) / canvas.width;
+
+  const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+
+  let posY = 0;
+  let remaining = imgH;
+  let page = 0;
+
+  while (remaining > 0) {
+    if (page > 0) doc.addPage();
+    const sliceH = Math.min(pageH, remaining);
+    // Crop canvas slice for this page
+    const srcY = (page * pageH * canvas.width) / pageW;
+    const srcH = (sliceH * canvas.width) / pageW;
+    const sliceCanvas = document.createElement('canvas');
+    sliceCanvas.width = canvas.width;
+    sliceCanvas.height = srcH;
+    sliceCanvas.getContext('2d').drawImage(canvas, 0, srcY, canvas.width, srcH, 0, 0, canvas.width, srcH);
+    const imgData = sliceCanvas.toDataURL('image/jpeg', 0.95);
+    doc.addImage(imgData, 'JPEG', 0, 0, imgW, sliceH);
+    remaining -= pageH;
+    page++;
   }
-  if(d.isFature){
-    doc.setFillColor(240,244,255);doc.roundedRect(margin,y,pageW-2*margin,contactBoxH,2,2,'F');
-    doc.setDrawColor(...accentRGB);doc.setLineWidth(0.5);doc.rect(margin,y,pageW-2*margin,contactBoxH,'S');
-    doc.setFontSize(8);doc.setFont(undefined,'normal');doc.setTextColor(30,58,95);
-    doc.text('Per cdo pyetje ne lidhje me kete fature, kontaktoni numrin:',pageW/2,y+6,{align:'center'});
-    doc.setFontSize(11);doc.setFont(undefined,'bold');doc.setTextColor(...accentRGB);
-    doc.text('+355 674474801',pageW/2,y+13,{align:'center'});
-    doc.setFontSize(8.5);doc.setFont(undefined,'bold');doc.setTextColor(30,58,95);
-    doc.text('FALEMINDERIT QE ZGJODHET SHKODRA TECH!',pageW/2,y+19,{align:'center'});
-  } else {
-    doc.setFillColor(236,253,245);doc.roundedRect(margin,y,pageW-2*margin,contactBoxH,2,2,'F');
-    doc.setDrawColor(14,159,110);doc.setLineWidth(0.5);doc.rect(margin,y,pageW-2*margin,contactBoxH,'S');
-    doc.setFontSize(7.5);doc.setFont(undefined,'normal');doc.setTextColor(107,114,128);
-    doc.text('Validiteti: 30 dite  |  Ky preventiv eshte i vlefshëm per 30 dite nga data e leshimit.',pageW/2,y+6,{align:'center'});
-    doc.setFontSize(8);doc.setFont(undefined,'normal');doc.setTextColor(6,95,70);
-    doc.text('Per te pranuar kete preventiv ose per cdo pyetje, kontaktoni:',pageW/2,y+12,{align:'center'});
-    doc.setFontSize(11);doc.setFont(undefined,'bold');doc.setTextColor(14,159,110);
-    doc.text('+355 674474801',pageW/2,y+19,{align:'center'});
-    doc.setFontSize(8.5);doc.setFont(undefined,'bold');doc.setTextColor(30,64,175);
-    doc.text('FALEMINDERIT PER BESIMIN TUAJ — SHKODRA TECH',pageW/2,y+25,{align:'center'});
-  }
-  // -- FOOTER BAR (always last 10mm of page)
-  const footerY=287;
-  doc.setFillColor(...headerRGB);doc.rect(0,footerY,pageW,10,'F');
-  doc.setFontSize(7.5);doc.setFont(undefined,'normal');doc.setTextColor(200,210,230);
-  doc.text((d.leshuesi?.emri||'')+'  •  @shkodratech  •  WhatsApp: +355674474801',pageW/2,footerY+6.5,{align:'center'});
-  const filename=(d.isFature?'Fatura-':'Preventiv-')+d.nr_fatura+'.pdf';
-  const blob=doc.output('blob');const url=URL.createObjectURL(blob);
-  const a=document.createElement('a');a.href=url;a.download=filename;document.body.appendChild(a);a.click();document.body.removeChild(a);setTimeout(()=>URL.revokeObjectURL(url),3000);
+
+  const blob = doc.output('blob');
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 3000);
 }
 </script>
 </body>
