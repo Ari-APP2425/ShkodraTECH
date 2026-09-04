@@ -374,33 +374,28 @@ function removeLogo() {
   document.getElementById('removeLogo').classList.add('d-none');
   document.getElementById('logoInput').value='';
 }
-const PRESET_TYPES = {
-  'Kamera': ['2MP Analoge','2MP LAN','4MP Analoge','4MP LAN','5MP Analoge','5MP LAN','6MP Analoge','6MP LAN','8MP Analoge','8MP LAN','12MP Analoge','12MP LAN'],
-  'DVR': ['4CH','8CH','16CH','32CH'],
-  'NVR': ['4CH','8CH','16CH','32CH'],
-  'XVR': ['4CH','8CH','16CH','32CH']
-};
+const CAMERA_OPTS = ['2MP Analoge','2MP LAN','4MP Analoge','4MP LAN','5MP Analoge','5MP LAN','6MP Analoge','6MP LAN','8MP Analoge','8MP LAN','12MP Analoge','12MP LAN'];
+const DVR_NVR_XVR_OPTS = ['DVR 4CH','DVR 8CH','DVR 16CH','DVR 32CH','NVR 4CH','NVR 8CH','NVR 16CH','NVR 32CH','XVR 4CH','XVR 8CH','XVR 16CH','XVR 32CH'];
 
 function addRow(desc='',qty=1,unit='',price=0) {
   rowCounter++;
   const id=rowCounter;
   const opts=UNITS.map(u=>`<option value="${u}" ${u===unit?'selected':''}>${u||'—'}</option>`).join('');
-  const typeOpts=`<option value="Kamera">Kamera</option>
-        <optgroup label="DVR/NVR/XVR">
-          <option value="DVR">DVR</option>
-          <option value="NVR">NVR</option>
-          <option value="XVR">XVR</option>
-        </optgroup>`;
+  const camOpts=CAMERA_OPTS.map(o=>`<option value="${o}">${o}</option>`).join('');
+  const dvrOpts=DVR_NVR_XVR_OPTS.map(o=>`<option value="${o}">${o}</option>`).join('');
   const html=`<tr id="row-${id}">
     <td>
       <input type="text" id="desc-${id}" class="form-control form-control-sm desc-input" value="${desc}" oninput="calcTotals()">
     </td>
     <td>
-      <select class="form-select form-select-sm mb-1 preset-type" onchange="updatePresetRes(${id})">
-        <option value="">— Personalizuar —</option>
-        ${typeOpts}
+      <select class="form-select form-select-sm mb-1" id="cam-${id}" onchange="selectCamera(${id})">
+        <option value="">Kamera...</option>
+        ${camOpts}
       </select>
-      <select class="form-select form-select-sm preset-res d-none" id="res-${id}" onchange="applyPreset(${id})"></select>
+      <select class="form-select form-select-sm" id="dvr-${id}" onchange="selectDvr(${id})">
+        <option value="">DVR/NVR/XVR...</option>
+        ${dvrOpts}
+      </select>
     </td>
     <td><input type="number" id="qty-${id}" class="form-control form-control-sm text-center" value="${qty}" min="0" step="any" oninput="calcRowTotal(${id});calcTotals()"></td>
     <td><select id="unit-${id}" class="form-select form-select-sm">${opts}</select></td>
@@ -412,25 +407,24 @@ function addRow(desc='',qty=1,unit='',price=0) {
   calcRowTotal(id);
 }
 
-function updatePresetRes(id) {
-  const row = document.getElementById('row-'+id);
-  const typeSelect = row.querySelector('.preset-type');
-  const resSelect = document.getElementById('res-'+id);
-  const type = typeSelect.value;
-  if (!type) { resSelect.classList.add('d-none'); resSelect.innerHTML=''; return; }
-  const options = PRESET_TYPES[type] || [];
-  const placeholder = type === 'Kamera' ? 'Zgjidh rezolucionin...' : 'Zgjidh kanalet...';
-  resSelect.innerHTML = `<option value="">${placeholder}</option>` + options.map(o=>`<option value="${o}">${o}</option>`).join('');
-  resSelect.classList.remove('d-none');
+function selectCamera(id) {
+  const camSelect = document.getElementById('cam-'+id);
+  const dvrSelect = document.getElementById('dvr-'+id);
+  const descInput = document.getElementById('desc-'+id);
+  if (camSelect.value) {
+    descInput.value = 'Kamera ' + camSelect.value;
+    dvrSelect.value = '';
+    calcTotals();
+  }
 }
 
-function applyPreset(id) {
-  const row = document.getElementById('row-'+id);
-  const typeSelect = row.querySelector('.preset-type');
-  const resSelect = document.getElementById('res-'+id);
+function selectDvr(id) {
+  const camSelect = document.getElementById('cam-'+id);
+  const dvrSelect = document.getElementById('dvr-'+id);
   const descInput = document.getElementById('desc-'+id);
-  if (resSelect.value) {
-    descInput.value = typeSelect.value + ' ' + resSelect.value;
+  if (dvrSelect.value) {
+    descInput.value = dvrSelect.value;
+    camSelect.value = '';
     calcTotals();
   }
 }
