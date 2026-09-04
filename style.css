@@ -26,11 +26,19 @@
   .section-header.preventiv-header { background: #d1fae5; color: #065f46; }
   .logo-upload-area { border: 2px dashed var(--border); border-radius: 10px; padding: 1rem; cursor: pointer; min-height: 90px; display: flex; align-items: center; justify-content: center; }
   .logo-upload-area:hover { border-color: var(--primary); }
-  #itemsTable th { font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.5px; color: var(--muted); }
-  .col-desc { min-width: 260px; } .col-qty { width: 80px; } .col-unit { width: 110px; } .col-price { width: 120px; } .col-total { width: 110px; } .col-action { width: 50px; }
-  .type-select-row { flex-wrap: wrap; }
-  .type-select-row select { min-width: 110px; flex: 1 1 auto; }
   .item-total { font-weight: 600; color: var(--primary); }
+
+  /* ITEM ROW (card-style, replaces old table) */
+  .item-row { padding: 1rem 1.25rem; border-bottom: 1px solid var(--border); }
+  .item-row:last-child { border-bottom: none; }
+  .item-row-top { display: flex; gap: 8px; align-items: flex-start; margin-bottom: 10px; }
+  .item-type-group { display: flex; gap: 6px; flex: 1; flex-wrap: wrap; }
+  .item-type-group select { flex: 1 1 100px; min-width: 90px; }
+  .item-row-numbers { display: flex; gap: 8px; align-items: flex-end; }
+  .num-group { flex: 1; min-width: 0; }
+  .num-group label { display: block; font-size: 0.72rem; color: var(--muted); font-weight: 600; margin-bottom: 3px; }
+  .total-group { text-align: right; }
+  .total-group .item-total { display: block; padding: 0.3rem 0; font-size: 0.95rem; }
   .card-totali { border: 2px solid var(--primary); }
   .card-totali .section-header { background: var(--primary); color: #fff; }
   .card-totali.preventiv-mode { border-color: #0e9f6e; }
@@ -107,22 +115,18 @@
     .mb-3 { margin-bottom: 0.75rem !important; }
     .g-3 { --bs-gutter-y: 0.6rem; }
 
-    /* Items table — e ngjeshur për të rrijë brenda kornizës, pa scroll horizontal */
-    .table-responsive { overflow-x: visible; }
-    #itemsTable { table-layout: fixed; width: 100%; }
-    #itemsTable th, #itemsTable td { padding: 4px 3px; font-size: 0.68rem; overflow-wrap: break-word; }
-    .col-desc { width: 34%; min-width: 0; }
-    .col-qty { width: 12%; }
-    .col-unit { width: 16%; }
-    .col-price { width: 18%; }
-    .col-total { width: 17%; }
-    .col-action { width: 6%; }
-    #itemsTable input, #itemsTable select { padding: 0.2rem 0.25rem !important; font-size: 0.7rem !important; }
-    .type-select-row { flex-direction: column; gap: 3px !important; }
-    .type-select-row select { width: 100%; }
+    /* Item rows — kartela e plotë, pa mbivendosje, pa scroll horizontal */
+    .item-row { padding: 0.85rem 0.9rem; }
+    .item-type-group { gap: 5px; }
+    .item-type-group select { flex: 1 1 90px; font-size: 0.72rem !important; padding: 0.28rem 0.35rem !important; }
+    .item-row-numbers { flex-wrap: wrap; gap: 6px; }
+    .num-group { flex: 1 1 42%; min-width: 0; }
+    .total-group { flex: 1 1 100%; text-align: left; }
+    .total-group .item-total { font-size: 1rem; }
+    .item-row input, .item-row select { font-size: 0.78rem !important; padding: 0.32rem 0.5rem !important; }
     .form-control-sm { padding: 0.28rem 0.45rem; font-size: 0.8rem; }
     .form-select-sm { padding: 0.28rem 1.4rem 0.28rem 0.45rem; font-size: 0.8rem; }
-    .col-action .btn { padding: 0.15rem 0.3rem !important; font-size: 0.7rem !important; }
+    .item-row-top .btn { padding: 0.3rem 0.5rem !important; font-size: 0.75rem !important; }
 
     /* Buttons */
     .btn-lg { font-size: 0.95rem; padding: 0.6rem 1rem; }
