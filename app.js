@@ -375,17 +375,22 @@ function removeLogo() {
   document.getElementById('logoInput').value='';
 }
 const PRESET_TYPES = {
-  'Kamera': ['2MP Analoge','2MP LAN','4MP Analoge','4MP LAN','5MP','6MP','8MP','12MP'],
-  'NVR': ['2MP','4MP','5MP','6MP','8MP','12MP'],
-  'DVR': ['2MP','4MP','5MP','6MP','8MP','12MP'],
-  'XVR': ['2MP','4MP','5MP','6MP','8MP','12MP']
+  'Kamera': ['2MP Analoge','2MP LAN','4MP Analoge','4MP LAN','5MP Analoge','5MP LAN','6MP Analoge','6MP LAN','8MP Analoge','8MP LAN','12MP Analoge','12MP LAN'],
+  'DVR': ['4CH','8CH','16CH','32CH'],
+  'NVR': ['4CH','8CH','16CH','32CH'],
+  'XVR': ['4CH','8CH','16CH','32CH']
 };
 
 function addRow(desc='',qty=1,unit='',price=0) {
   rowCounter++;
   const id=rowCounter;
   const opts=UNITS.map(u=>`<option value="${u}" ${u===unit?'selected':''}>${u||'—'}</option>`).join('');
-  const typeOpts=Object.keys(PRESET_TYPES).map(t=>`<option value="${t}">${t}</option>`).join('');
+  const typeOpts=`<option value="Kamera">Kamera</option>
+        <optgroup label="DVR/NVR/XVR">
+          <option value="DVR">DVR</option>
+          <option value="NVR">NVR</option>
+          <option value="XVR">XVR</option>
+        </optgroup>`;
   const html=`<tr id="row-${id}">
     <td>
       <select class="form-select form-select-sm mb-1 preset-type" onchange="updatePresetRes(${id})">
@@ -412,7 +417,8 @@ function updatePresetRes(id) {
   const type = typeSelect.value;
   if (!type) { resSelect.classList.add('d-none'); resSelect.innerHTML=''; return; }
   const options = PRESET_TYPES[type] || [];
-  resSelect.innerHTML = '<option value="">Zgjidh rezolucionin...</option>' + options.map(o=>`<option value="${o}">${o}</option>`).join('');
+  const placeholder = type === 'Kamera' ? 'Zgjidh rezolucionin...' : 'Zgjidh kanalet...';
+  resSelect.innerHTML = `<option value="">${placeholder}</option>` + options.map(o=>`<option value="${o}">${o}</option>`).join('');
   resSelect.classList.remove('d-none');
 }
 
