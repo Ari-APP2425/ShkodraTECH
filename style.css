@@ -27,7 +27,7 @@
   .logo-upload-area { border: 2px dashed var(--border); border-radius: 10px; padding: 1rem; cursor: pointer; min-height: 90px; display: flex; align-items: center; justify-content: center; }
   .logo-upload-area:hover { border-color: var(--primary); }
   #itemsTable th { font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.5px; color: var(--muted); }
-  .col-desc { min-width: 200px; } .col-qty { width: 80px; } .col-unit { width: 110px; } .col-price { width: 120px; } .col-total { width: 110px; } .col-action { width: 50px; }
+  .col-desc { min-width: 180px; } .col-type { width: 160px; } .col-qty { width: 80px; } .col-unit { width: 110px; } .col-price { width: 120px; } .col-total { width: 110px; } .col-action { width: 50px; }
   .item-total { font-weight: 600; color: var(--primary); }
   .card-totali { border: 2px solid var(--primary); }
   .card-totali .section-header { background: var(--primary); color: #fff; }
@@ -109,11 +109,12 @@
     .table-responsive { overflow-x: visible; }
     #itemsTable { table-layout: fixed; width: 100%; }
     #itemsTable th, #itemsTable td { padding: 4px 3px; font-size: 0.68rem; overflow-wrap: break-word; }
-    .col-desc { width: 30%; min-width: 0; }
-    .col-qty { width: 12%; }
-    .col-unit { width: 17%; }
-    .col-price { width: 19%; }
-    .col-total { width: 17%; }
+    .col-desc { width: 20%; min-width: 0; }
+    .col-type { width: 20%; }
+    .col-qty { width: 10%; }
+    .col-unit { width: 14%; }
+    .col-price { width: 16%; }
+    .col-total { width: 15%; }
     .col-action { width: 5%; }
     #itemsTable input, #itemsTable select { padding: 0.2rem 0.25rem !important; font-size: 0.7rem !important; }
     .form-control-sm { padding: 0.28rem 0.45rem; font-size: 0.8rem; }
