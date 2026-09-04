@@ -385,17 +385,17 @@ function addRow(desc='',qty=1,unit='',price=0) {
   const dvrOpts=DVR_NVR_XVR_OPTS.map(o=>`<option value="${o}">${o}</option>`).join('');
   const html=`<tr id="row-${id}">
     <td>
-      <input type="text" id="desc-${id}" class="form-control form-control-sm desc-input" value="${desc}" oninput="calcTotals()">
-    </td>
-    <td>
-      <select class="form-select form-select-sm mb-1" id="cam-${id}" onchange="selectCamera(${id})">
-        <option value="">Kamera...</option>
-        ${camOpts}
-      </select>
-      <select class="form-select form-select-sm" id="dvr-${id}" onchange="selectDvr(${id})">
-        <option value="">DVR/NVR/XVR...</option>
-        ${dvrOpts}
-      </select>
+      <div class="d-flex gap-1 mb-1 type-select-row">
+        <select class="form-select form-select-sm" id="cam-${id}" onchange="selectCamera(${id})">
+          <option value="">Kamera...</option>
+          ${camOpts}
+        </select>
+        <select class="form-select form-select-sm" id="dvr-${id}" onchange="selectDvr(${id})">
+          <option value="">DVR/NVR/XVR...</option>
+          ${dvrOpts}
+        </select>
+      </div>
+      <input type="text" id="desc-${id}" class="form-control form-control-sm desc-input" placeholder="Përshkrimi..." value="${desc}" oninput="calcTotals()">
     </td>
     <td><input type="number" id="qty-${id}" class="form-control form-control-sm text-center" value="${qty}" min="0" step="any" oninput="calcRowTotal(${id});calcTotals()"></td>
     <td><select id="unit-${id}" class="form-select form-select-sm">${opts}</select></td>
