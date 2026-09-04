@@ -393,12 +393,14 @@ function addRow(desc='',qty=1,unit='',price=0) {
         </optgroup>`;
   const html=`<tr id="row-${id}">
     <td>
+      <input type="text" id="desc-${id}" class="form-control form-control-sm desc-input" value="${desc}" oninput="calcTotals()">
+    </td>
+    <td>
       <select class="form-select form-select-sm mb-1 preset-type" onchange="updatePresetRes(${id})">
         <option value="">— Personalizuar —</option>
         ${typeOpts}
       </select>
-      <select class="form-select form-select-sm mb-1 preset-res d-none" id="res-${id}" onchange="applyPreset(${id})"></select>
-      <input type="text" id="desc-${id}" class="form-control form-control-sm desc-input" value="${desc}" oninput="calcTotals()">
+      <select class="form-select form-select-sm preset-res d-none" id="res-${id}" onchange="applyPreset(${id})"></select>
     </td>
     <td><input type="number" id="qty-${id}" class="form-control form-control-sm text-center" value="${qty}" min="0" step="any" oninput="calcRowTotal(${id});calcTotals()"></td>
     <td><select id="unit-${id}" class="form-select form-select-sm">${opts}</select></td>
