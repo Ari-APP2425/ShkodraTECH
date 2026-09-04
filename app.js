@@ -374,60 +374,82 @@ function removeLogo() {
   document.getElementById('removeLogo').classList.add('d-none');
   document.getElementById('logoInput').value='';
 }
-const CAMERA_OPTS = ['2MP Analoge','2MP LAN','4MP Analoge','4MP LAN','5MP Analoge','5MP LAN','6MP Analoge','6MP LAN','8MP Analoge','8MP LAN','12MP Analoge','12MP LAN'];
-const DVR_NVR_XVR_OPTS = ['DVR 4CH','DVR 8CH','DVR 16CH','DVR 32CH','NVR 4CH','NVR 8CH','NVR 16CH','NVR 32CH','XVR 4CH','XVR 8CH','XVR 16CH','XVR 32CH'];
+const RESOLUTIONS = ['2MP','4MP','5MP','6MP','8MP','12MP'];
+const CAMERA_CONN = ['Analoge','LAN'];
+const CHANNELS = ['4CH','8CH','16CH','32CH'];
 
-function addRow(desc='',qty=1,unit='',price=0) {
+function addRow(desc='',qty=1,unit='',price=0,type='Kamera',res='',extra='') {
   rowCounter++;
   const id=rowCounter;
-  const opts=UNITS.map(u=>`<option value="${u}" ${u===unit?'selected':''}>${u||'—'}</option>`).join('');
-  const camOpts=CAMERA_OPTS.map(o=>`<option value="${o}">${o}</option>`).join('');
-  const dvrOpts=DVR_NVR_XVR_OPTS.map(o=>`<option value="${o}">${o}</option>`).join('');
-  const html=`<tr id="row-${id}">
-    <td>
-      <div class="d-flex gap-1 mb-1 type-select-row">
-        <select class="form-select form-select-sm" id="cam-${id}" onchange="selectCamera(${id})">
-          <option value="">Kamera...</option>
-          ${camOpts}
+  const unitOpts=UNITS.map(u=>`<option value="${u}" ${u===unit?'selected':''}>${u||'—'}</option>`).join('');
+  const resOpts=RESOLUTIONS.map(r=>`<option value="${r}" ${r===res?'selected':''}>${r}</option>`).join('');
+  const html=`<div class="item-row" id="row-${id}">
+    <div class="item-row-top">
+      <div class="item-type-group">
+        <select id="type-${id}" class="form-select form-select-sm" onchange="onTypeChange(${id})">
+          <option value="Kamera" ${type==='Kamera'?'selected':''}>Kamera</option>
+          <option value="DVR" ${type==='DVR'?'selected':''}>DVR</option>
+          <option value="NVR" ${type==='NVR'?'selected':''}>NVR</option>
+          <option value="XVR" ${type==='XVR'?'selected':''}>XVR</option>
         </select>
-        <select class="form-select form-select-sm" id="dvr-${id}" onchange="selectDvr(${id})">
-          <option value="">DVR/NVR/XVR...</option>
-          ${dvrOpts}
+        <select id="res-${id}" class="form-select form-select-sm" onchange="updateSpec(${id})">
+          <option value="">MP...</option>
+          ${resOpts}
         </select>
+        <select id="extra-${id}" class="form-select form-select-sm" onchange="updateSpec(${id})"></select>
       </div>
-      <input type="text" id="desc-${id}" class="form-control form-control-sm desc-input" placeholder="Përshkrimi..." value="${desc}" oninput="calcTotals()">
-    </td>
-    <td><input type="number" id="qty-${id}" class="form-control form-control-sm text-center" value="${qty}" min="0" step="any" oninput="calcRowTotal(${id});calcTotals()"></td>
-    <td><select id="unit-${id}" class="form-select form-select-sm">${opts}</select></td>
-    <td><input type="number" id="price-${id}" class="form-control form-control-sm text-end" value="${price}" min="0" step="any" oninput="calcRowTotal(${id});calcTotals()"></td>
-    <td class="text-end align-middle"><span id="rowtotal-${id}" class="item-total">${currSymbol} 0.00</span></td>
-    <td class="text-center align-middle"><button type="button" class="btn btn-sm btn-outline-danger px-2 py-0" onclick="removeRow(${id})"><i class="fa-solid fa-xmark"></i></button></td>
-  </tr>`;
+      <button type="button" class="btn btn-sm btn-outline-danger flex-shrink-0" onclick="removeRow(${id})"><i class="fa-solid fa-xmark"></i></button>
+    </div>
+    <input type="text" id="desc-${id}" class="form-control form-control-sm desc-input mb-2" placeholder="Përshkrimi..." value="${desc}" oninput="calcTotals()">
+    <div class="item-row-numbers">
+      <div class="num-group">
+        <label>Sasia</label>
+        <input type="number" id="qty-${id}" class="form-control form-control-sm text-center" value="${qty}" min="0" step="any" oninput="calcRowTotal(${id});calcTotals()">
+      </div>
+      <div class="num-group">
+        <label>Njësia</label>
+        <select id="unit-${id}" class="form-select form-select-sm">${unitOpts}</select>
+      </div>
+      <div class="num-group">
+        <label>Çmimi</label>
+        <input type="number" id="price-${id}" class="form-control form-control-sm text-end" value="${price}" min="0" step="any" oninput="calcRowTotal(${id});calcTotals()">
+      </div>
+      <div class="num-group total-group">
+        <label>Totali</label>
+        <span id="rowtotal-${id}" class="item-total">${currSymbol} 0.00</span>
+      </div>
+    </div>
+  </div>`;
   document.getElementById('itemsBody').insertAdjacentHTML('beforeend',html);
+  populateExtraOptions(id,type);
+  if(extra) document.getElementById('extra-'+id).value=extra;
   calcRowTotal(id);
 }
 
-function selectCamera(id) {
-  const camSelect = document.getElementById('cam-'+id);
-  const dvrSelect = document.getElementById('dvr-'+id);
-  const descInput = document.getElementById('desc-'+id);
-  if (camSelect.value) {
-    descInput.value = 'Kamera ' + camSelect.value;
-    dvrSelect.value = '';
+function populateExtraOptions(id,type) {
+  const extraSelect=document.getElementById('extra-'+id);
+  if(!extraSelect) return;
+  const isCamera=type==='Kamera';
+  const opts=isCamera?CAMERA_CONN:CHANNELS;
+  extraSelect.innerHTML=`<option value="">${isCamera?'Lidhja...':'Kanalet...'}</option>`+opts.map(o=>`<option value="${o}">${o}</option>`).join('');
+}
+
+function onTypeChange(id) {
+  populateExtraOptions(id,document.getElementById('type-'+id).value);
+  updateSpec(id);
+}
+
+function updateSpec(id) {
+  const type=document.getElementById('type-'+id).value;
+  const res=document.getElementById('res-'+id).value;
+  const extra=document.getElementById('extra-'+id).value;
+  const descInput=document.getElementById('desc-'+id);
+  if(res||extra) {
+    descInput.value=[type,res,extra].filter(Boolean).join(' ');
     calcTotals();
   }
 }
 
-function selectDvr(id) {
-  const camSelect = document.getElementById('cam-'+id);
-  const dvrSelect = document.getElementById('dvr-'+id);
-  const descInput = document.getElementById('desc-'+id);
-  if (dvrSelect.value) {
-    descInput.value = dvrSelect.value;
-    camSelect.value = '';
-    calcTotals();
-  }
-}
 function removeRow(id) { document.getElementById('row-'+id)?.remove(); calcTotals(); }
 function calcRowTotal(id) {
   const q=parseFloat(document.getElementById('qty-'+id)?.value)||0;
@@ -437,7 +459,7 @@ function calcRowTotal(id) {
 }
 function calcTotals() {
   let sub=0;
-  document.querySelectorAll('#itemsBody tr').forEach(row=>{
+  document.querySelectorAll('#itemsBody .item-row').forEach(row=>{
     const id=row.id.replace('row-','');
     const q=parseFloat(document.getElementById('qty-'+id)?.value)||0;
     const p=parseFloat(document.getElementById('price-'+id)?.value)||0;
@@ -459,7 +481,7 @@ function calcTotals() {
 
 function collectData() {
   const rows=[];
-  document.querySelectorAll('#itemsBody tr').forEach(row=>{
+  document.querySelectorAll('#itemsBody .item-row').forEach(row=>{
     const id=row.id.replace('row-','');
     const desc=document.getElementById('desc-'+id)?.value||'';
     const qty=parseFloat(document.getElementById('qty-'+id)?.value)||0;
