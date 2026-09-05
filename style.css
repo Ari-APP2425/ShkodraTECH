@@ -197,6 +197,7 @@ body {
   flex-wrap: wrap;
 }
 .item-type-group select { flex: 1 1 100px; min-width: 90px; }
+.item-type-group input.form-control { flex: 1 1 120px; min-width: 100px; }
 
 /* Numbers grid: 2×2 on mobile */
 .item-row-numbers {
