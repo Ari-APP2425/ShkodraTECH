@@ -52,17 +52,54 @@ function injectKursiUI() {
 }
 
 // ── TABS ─────────────────────────────────────────────────────────────
+let justFinishedDoc = false; // u bë true pasi ruhet në Arkivë ose shkarkohet PDF
+
 function showTab(tabId, btn) {
   document.querySelectorAll('[id$="Tab"]').forEach(t => t.classList.add('d-none'));
   document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
   document.getElementById(tabId).classList.remove('d-none');
   btn.classList.add('active');
   if (tabId === 'arkivaTab') renderArkiva();
-  // Nëse kalohet manualisht te "Krijo", anulo editimin
+  // Nëse kalohet te "Krijo" pasi një dokument sapo është ruajtur/shkarkuar, fillo një dokument të ri
   if (tabId === 'krijoTab' && !editingId) {
     const banner = document.getElementById('editingBanner');
     if (banner) banner.style.display = 'none';
+    if (justFinishedDoc) {
+      resetFormForNew();
+      justFinishedDoc = false;
+    }
   }
+}
+
+// ── RESET PËR DOKUMENT TË RI ──────────────────────────────────────────
+function resetFormForNew() {
+  document.getElementById('bleres_emri').value = '';
+  document.getElementById('bleres_nipt').value = '';
+  document.getElementById('bleres_adresa').value = '';
+  document.getElementById('bleres_tel').value = '';
+  document.getElementById('bleres_email').value = '';
+  if (document.getElementById('bleres_modeli')) document.getElementById('bleres_modeli').value = '';
+
+  document.getElementById('itemsBody').innerHTML = '';
+  rowCounter = 0;
+  addRow();
+
+  document.getElementById('shenime').value = '';
+  document.getElementById('zbritje').value = 0;
+  document.getElementById('tvshCheck').checked = false;
+  document.getElementById('tvsh_norma').value = 20;
+  toggleTvsh();
+  document.getElementById('validitet').value = '30 ditë';
+  document.getElementById('data_skadimit').value = '';
+  document.getElementById('data_fatura').valueAsDate = new Date();
+
+  try {
+    const c = (parseInt(localStorage.getItem('fatura_counter_fature')||'0') || 0) + 1;
+    localStorage.setItem('fatura_counter_fature', c);
+    document.getElementById('nr_fatura').value = 'F-' + String(c).padStart(5,'0');
+  } catch(e) {}
+
+  calcTotals();
 }
 
 function setFilter(f, btn) {
@@ -157,6 +194,7 @@ async function saveToArkiva() {
       }, 2000);
     }
     await updateArkivaBadge();
+    justFinishedDoc = true;
   } catch(e) {
     alert('Gabim gjatë ruajtjes: ' + e.message);
   }
@@ -791,7 +829,7 @@ function printInvoice() {
   win.document.close(); win.focus(); setTimeout(()=>{win.print();win.close();},600);
 }
 
-async function downloadPDF() { const d=collectData(); if(!validate(d)) return; await generatePDF(d); }
+async function downloadPDF() { const d=collectData(); if(!validate(d)) return; await generatePDF(d); justFinishedDoc = true; }
 async function downloadPDFFromData(d) { if(!d) return; await generatePDF(d); }
 
 async function generatePDF(d) {
