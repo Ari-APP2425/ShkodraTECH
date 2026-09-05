@@ -371,7 +371,23 @@ function setDocType(type) {
   document.getElementById('modalDownloadBtn').classList.toggle('preventiv-pdf', !isFature);
 }
 
+function injectEmertimSuggestions() {
+  if (document.getElementById('emertimSuggestions')) return;
+  const dl = document.createElement('datalist');
+  dl.id = 'emertimSuggestions';
+  const sugjerime = [
+    'Kamera Hikvision','Kamera Dahua','Kamera Imou','Kamera Ezviz',
+    'Sistem Alarmi','Sensor Lëvizjeje','Sirenë Alarmi','Panel Alarmi',
+    'DVR Hikvision','DVR Dahua','NVR Hikvision','NVR Dahua',
+    'Ushqyes (Power Supply)','Konektor BNC','Switch POE','Router',
+    'Instalim dhe Konfigurim','Mirëmbajtje Sistemi'
+  ];
+  dl.innerHTML = sugjerime.map(s=>`<option value="${s}"></option>`).join('');
+  document.body.appendChild(dl);
+}
+
 window.onload = () => {
+  injectEmertimSuggestions();
   if (logoBase64) {
     document.getElementById('logoPreview').src = logoBase64;
     document.getElementById('logoPreview').classList.remove('d-none');
@@ -434,8 +450,8 @@ function addRow(desc='',qty=1,unit='',price=0,type='Kamera',res='',extra='') {
           <option value="NVR" ${type==='NVR'?'selected':''}>NVR</option>
           <option value="XVR" ${type==='XVR'?'selected':''}>XVR</option>
           <option value="HDD" ${type==='HDD'?'selected':''}>HDD</option>
-          <option value="Kuti" ${type==='Kuti'?'selected':''}>Kuti (vetë)</option>
           <option value="Cavo" ${type==='Cavo'?'selected':''}>Cavo</option>
+          <option value="Tjeter" ${type==='Tjeter'?'selected':''}>Tjetër (Emërtim i lirë)</option>
         </select>
         <select id="res-${id}" class="form-select form-select-sm" onchange="updateSpec(${id})">
           ${buildResOptions(type,res)}
@@ -444,7 +460,7 @@ function addRow(desc='',qty=1,unit='',price=0,type='Kamera',res='',extra='') {
       </div>
       <button type="button" class="btn btn-sm btn-outline-danger flex-shrink-0" onclick="removeRow(${id})"><i class="fa-solid fa-xmark"></i></button>
     </div>
-    <input type="text" id="desc-${id}" class="form-control form-control-sm desc-input mb-2" placeholder="Përshkrimi..." value="${desc}" oninput="calcTotals()">
+    <input type="text" id="desc-${id}" class="form-control form-control-sm desc-input mb-2" list="emertimSuggestions" placeholder="${type==='Tjeter'?'Emërtimi (p.sh. Kamera Hikvision, Sistem Alarmi, Dahua...)':'Përshkrimi...'}" value="${desc}" oninput="calcTotals()">
     <div class="item-row-numbers">
       <div class="num-group">
         <label>Sasia</label>
@@ -475,7 +491,7 @@ function buildResOptions(type,res) {
   if (type==='HDD') {
     return `<option value="">Kapaciteti...</option>` + HDD_SIZES.map(s=>`<option value="${s}" ${s===res?'selected':''}>${s}</option>`).join('');
   }
-  if (type==='Kuti' || type==='Cavo') {
+  if (type==='Cavo' || type==='Tjeter') {
     return `<option value="">—</option>`;
   }
   return `<option value="">MP...</option>` + RESOLUTIONS.map(r=>`<option value="${r}" ${r===res?'selected':''}>${r}</option>`).join('');
@@ -497,14 +513,20 @@ function populateExtraOptions(id,type) {
   } else if (type==='Cavo') {
     extraSelect.innerHTML=`<option value="">Lloji...</option>`+CABLE_TYPES.map(o=>`<option value="${o}">${o}</option>`).join('');
   } else {
-    // HDD dhe Kuti nuk kanë nevojë për fushën shtesë
+    // HDD dhe Tjetër nuk kanë nevojë për fushën shtesë
     extraSelect.innerHTML=`<option value="">—</option>`;
   }
 }
 
 function onTypeChange(id) {
-  updateResOptions(id,document.getElementById('type-'+id).value);
-  populateExtraOptions(id,document.getElementById('type-'+id).value);
+  const type = document.getElementById('type-'+id).value;
+  updateResOptions(id,type);
+  populateExtraOptions(id,type);
+  const descInput = document.getElementById('desc-'+id);
+  if (descInput) {
+    descInput.placeholder = type==='Tjeter' ? 'Emërtimi (p.sh. Kamera Hikvision, Sistem Alarmi, Dahua...)' : 'Përshkrimi...';
+    if (type==='Tjeter') descInput.focus();
+  }
   updateSpec(id);
 }
 
