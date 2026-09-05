@@ -416,14 +416,14 @@ function removeLogo() {
   document.getElementById('logoInput').value='';
 }
 const RESOLUTIONS = ['2MP','4MP','5MP','6MP','8MP','12MP'];
-const HDD_SIZES = ['500GB','1TB','2TB','3TB','4TB','5TB','6TB','8TB','12TB'];
-const CAMERA_CONN = ['Analoge','LAN'];
+const CAMERA_CONN = ['Analoge','LAN','Wifi'];
 const CHANNELS = ['4CH','8CH','16CH','32CH'];
 
-function addRow(desc='',qty=1,unit='',price=0,type='Kamera',res='',extra='',conn='') {
+function addRow(desc='',qty=1,unit='',price=0,type='Kamera',res='',extra='') {
   rowCounter++;
   const id=rowCounter;
   const unitOpts=UNITS.map(u=>`<option value="${u}" ${u===unit?'selected':''}>${u||'—'}</option>`).join('');
+  const resOpts=RESOLUTIONS.map(r=>`<option value="${r}" ${r===res?'selected':''}>${r}</option>`).join('');
   const html=`<div class="item-row" id="row-${id}">
     <div class="item-row-top">
       <div class="item-type-group">
@@ -432,10 +432,11 @@ function addRow(desc='',qty=1,unit='',price=0,type='Kamera',res='',extra='',conn
           <option value="DVR" ${type==='DVR'?'selected':''}>DVR</option>
           <option value="NVR" ${type==='NVR'?'selected':''}>NVR</option>
           <option value="XVR" ${type==='XVR'?'selected':''}>XVR</option>
-          <option value="HDD" ${type==='HDD'?'selected':''}>HDD</option>
         </select>
-        <select id="res-${id}" class="form-select form-select-sm" onchange="updateSpec(${id})"></select>
-        <select id="conn-${id}" class="form-select form-select-sm" onchange="updateSpec(${id})"></select>
+        <select id="res-${id}" class="form-select form-select-sm" onchange="updateSpec(${id})">
+          <option value="">MP...</option>
+          ${resOpts}
+        </select>
         <select id="extra-${id}" class="form-select form-select-sm" onchange="updateSpec(${id})"></select>
       </div>
       <button type="button" class="btn btn-sm btn-outline-danger flex-shrink-0" onclick="removeRow(${id})"><i class="fa-solid fa-xmark"></i></button>
@@ -461,63 +462,31 @@ function addRow(desc='',qty=1,unit='',price=0,type='Kamera',res='',extra='',conn
     </div>
   </div>`;
   document.getElementById('itemsBody').insertAdjacentHTML('beforeend',html);
-  populateSpecOptions(id,type);
-  if(res) document.getElementById('res-'+id).value=res;
-  if(conn) document.getElementById('conn-'+id).value=conn;
+  populateExtraOptions(id,type);
   if(extra) document.getElementById('extra-'+id).value=extra;
   calcRowTotal(id);
 }
 
-// Plotëson 3 dropdown-et sipas tipit të artikullit:
-//  - res:   MP (Kamera/DVR/NVR/XVR) ose Kapaciteti (HDD)
-//  - conn:  Lidhja Analoge/LAN — për të gjitha përveç HDD
-//  - extra: Kanalet — vetëm për DVR/NVR/XVR
-function populateSpecOptions(id,type) {
-  const resSelect=document.getElementById('res-'+id);
-  const connSelect=document.getElementById('conn-'+id);
+function populateExtraOptions(id,type) {
   const extraSelect=document.getElementById('extra-'+id);
-  if(!resSelect||!connSelect||!extraSelect) return;
-  const isHdd=type==='HDD';
-  const isRecorder=(type==='DVR'||type==='NVR'||type==='XVR');
-
-  if(isHdd) {
-    resSelect.innerHTML='<option value="">Kapaciteti...</option>'+HDD_SIZES.map(s=>`<option value="${s}">${s}</option>`).join('');
-    resSelect.classList.remove('d-none');
-  } else {
-    resSelect.innerHTML='<option value="">MP...</option>'+RESOLUTIONS.map(r=>`<option value="${r}">${r}</option>`).join('');
-    resSelect.classList.remove('d-none');
-  }
-
-  if(isHdd) {
-    connSelect.innerHTML='';
-    connSelect.classList.add('d-none');
-  } else {
-    connSelect.innerHTML='<option value="">Lidhja...</option>'+CAMERA_CONN.map(o=>`<option value="${o}">${o}</option>`).join('');
-    connSelect.classList.remove('d-none');
-  }
-
-  if(isRecorder) {
-    extraSelect.innerHTML='<option value="">Kanalet...</option>'+CHANNELS.map(o=>`<option value="${o}">${o}</option>`).join('');
-    extraSelect.classList.remove('d-none');
-  } else {
-    extraSelect.innerHTML='';
-    extraSelect.classList.add('d-none');
-  }
+  if(!extraSelect) return;
+  const isCamera=type==='Kamera';
+  const opts=isCamera?CAMERA_CONN:CHANNELS;
+  extraSelect.innerHTML=`<option value="">${isCamera?'Lidhja...':'Kanalet...'}</option>`+opts.map(o=>`<option value="${o}">${o}</option>`).join('');
 }
 
 function onTypeChange(id) {
-  populateSpecOptions(id,document.getElementById('type-'+id).value);
+  populateExtraOptions(id,document.getElementById('type-'+id).value);
   updateSpec(id);
 }
 
 function updateSpec(id) {
   const type=document.getElementById('type-'+id).value;
   const res=document.getElementById('res-'+id).value;
-  const conn=document.getElementById('conn-'+id).value;
   const extra=document.getElementById('extra-'+id).value;
   const descInput=document.getElementById('desc-'+id);
-  if(res||conn||extra) {
-    descInput.value=[type,res,extra,conn].filter(Boolean).join(' ');
+  if(res||extra) {
+    descInput.value=[type,res,extra].filter(Boolean).join(' ');
     calcTotals();
   }
 }
