@@ -2,7 +2,7 @@
 <html lang="sq">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>Shkodra TECH</title>
 <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.2/css/bootstrap.min.css" rel="stylesheet">
 <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" rel="stylesheet">
@@ -14,295 +14,314 @@
 </head>
 <body>
 
-<nav class="navbar navbar-expand-lg navbar-dark shadow-sm">
-  <div class="container">
-    <a class="navbar-brand fw-bold text-white" href="#"><i class="fa-solid fa-file-invoice me-2"></i>SHKODRA TECH</a>
-    <div class="ms-auto d-flex align-items-center gap-2 flex-wrap">
-      <div class="doc-type-toggle">
-        <button class="doc-type-btn active" id="btnFature" onclick="setDocType('fature')"><i class="fa-solid fa-file-invoice me-1"></i>FATURË</button>
-        <button class="doc-type-btn" id="btnPreventiv" onclick="setDocType('preventiv')"><i class="fa-solid fa-file-contract me-1"></i>PREVENTIV</button>
-      </div>
+<!-- ── NAVBAR ─────────────────────────────────────────────── -->
+<nav class="navbar navbar-dark shadow-sm">
+  <div class="container-fluid px-3">
+    <a class="navbar-brand fw-bold text-white d-flex align-items-center gap-2" href="#">
+      <i class="fa-solid fa-file-invoice"></i>
+      <span>SHKODRA TECH</span>
+    </a>
+    <div class="doc-type-toggle">
+      <button class="doc-type-btn active" id="btnFature" onclick="setDocType('fature')">
+        <i class="fa-solid fa-file-invoice me-1"></i>Faturë
+      </button>
+      <button class="doc-type-btn preventiv" id="btnPreventiv" onclick="setDocType('preventiv')">
+        <i class="fa-solid fa-file-contract me-1"></i>Preventiv
+      </button>
     </div>
   </div>
 </nav>
 
-<div class="container my-4">
-  <div class="nav-tabs-custom">
-    <button class="nav-tab active" onclick="showTab('krijoTab', this)"><i class="fa-solid fa-plus-circle me-1"></i>Krijo të Re</button>
-    <button class="nav-tab" onclick="showTab('arkivaTab', this)" id="arkivaTabBtn"><i class="fa-solid fa-database me-1"></i>Arkiva <span id="arkivaBadge" class="badge bg-primary rounded-pill ms-1" style="font-size:0.7rem">0</span></button>
-    <button class="nav-tab" onclick="showTab('konfiguratorTab', this)" id="konfiguratorTabBtn"><i class="fa-solid fa-video me-1"></i>Konfigurator Kamerash</button>
-  </div>
-
-  <!-- TAB: KRIJO -->
-  <div id="krijoTab">
-  <div class="row g-4">
-    <div class="col-lg-8">
-      <div class="card shadow-sm mb-4">
-        <div class="card-header section-header" id="leshuesiHeader"><i class="fa-solid fa-building me-2"></i>Informacioni i Lëshuesit</div>
-        <div class="card-body">
-          <div class="row g-3">
-            <div class="col-12">
-              <label class="form-label fw-semibold">Logo (opsionale)</label>
-              <div class="logo-upload-area" onclick="document.getElementById('logoInput').click()">
-                <input type="file" id="logoInput" accept="image/*" class="d-none" onchange="handleLogo(event)">
-                <div id="logoPlaceholder" class="text-center"><i class="fa-solid fa-image fa-2x text-muted mb-2"></i><p class="text-muted mb-0 small">Kliko për të ngarkuar logon</p></div>
-                <img id="logoPreview" src="" alt="Logo" class="d-none" style="max-height:80px;max-width:200px;object-fit:contain;">
-              </div>
-              <div class="d-flex gap-2 mt-2">
-                <button type="button" class="btn btn-sm btn-outline-primary" onclick="document.getElementById('logoInput').click()"><i class="fa-solid fa-upload me-1"></i>Ngarko</button>
-                <button type="button" class="btn btn-sm btn-outline-danger d-none" id="removeLogo" onclick="removeLogo()"><i class="fa-solid fa-trash me-1"></i>Hiq</button>
-              </div>
-            </div>
-            <div class="col-md-6"><label class="form-label fw-semibold">Emri Kompanisë <span class="text-danger">*</span></label><input type="text" id="leshuesi_emri" class="form-control" value="Shkodra TECH"></div>
-            <div class="col-md-6"><label class="form-label fw-semibold">NIPT</label><input type="text" id="leshuesi_nipt" class="form-control" placeholder="K12345678A"></div>
-            <div class="col-md-6"><label class="form-label fw-semibold">Adresa</label><input type="text" id="leshuesi_adresa" class="form-control" value="Shkoder"></div>
-            <div class="col-md-6"><label class="form-label fw-semibold">Telefon</label><input type="text" id="leshuesi_tel" class="form-control" value="+355 674474801"></div>
-            <div class="col-md-6"><label class="form-label fw-semibold">Email</label><input type="email" id="leshuesi_email" class="form-control" value="arisheqi1@gmail.com"></div>
-            <div class="col-md-6"><label class="form-label fw-semibold">Web</label><input type="text" id="leshuesi_web" class="form-control" value="www.shkodratech.al"></div>
-          </div>
-        </div>
-      </div>
-
-      <div class="card shadow-sm mb-4">
-        <div class="card-header section-header" id="bleresHeader"><i class="fa-solid fa-user me-2"></i><span id="bleresTitle">Informacioni i Blerësit</span></div>
-        <div class="card-body">
-          <div class="row g-3">
-            <div class="col-md-6"><label class="form-label fw-semibold"><span id="bleresEmriLabel">Emri i Blerësit</span> <span class="text-danger">*</span></label><input type="text" id="bleres_emri" class="form-control" placeholder="Emri i Klientit"></div>
-            <div class="col-md-6"><label class="form-label fw-semibold">NIPT</label><input type="text" id="bleres_nipt" class="form-control"></div>
-            <div class="col-md-6"><label class="form-label fw-semibold">Adresa</label><input type="text" id="bleres_adresa" class="form-control"></div>
-            <div class="col-md-6"><label class="form-label fw-semibold">Telefon</label><input type="text" id="bleres_tel" class="form-control"></div>
-            <div class="col-md-6"><label class="form-label fw-semibold">Email</label><input type="email" id="bleres_email" class="form-control"></div>
-          </div>
-        </div>
-      </div>
-
-      <div class="card shadow-sm mb-4">
-        <div class="card-header section-header" id="artikujtHeader"><i class="fa-solid fa-list me-2"></i><span id="artikujtTitle">Artikujt / Shërbimet</span></div>
-        <div class="card-body p-0">
-          <div id="itemsBody"></div>
-          <div class="p-3 border-top">
-            <button type="button" class="btn btn-outline-success btn-sm" onclick="addRow()"><i class="fa-solid fa-plus me-1"></i>Shto Artikull</button>
-          </div>
-        </div>
-      </div>
-
-      <div class="card shadow-sm mb-4">
-        <div class="card-header section-header"><i class="fa-solid fa-note-sticky me-2"></i>Shënime</div>
-        <div class="card-body"><textarea id="shenime" class="form-control" rows="3" placeholder="Shënime shtesë..."></textarea></div>
-      </div>
-    </div>
-
-    <div class="col-lg-4">
-      <div class="card shadow-sm mb-4">
-        <div class="card-header section-header" id="detajetHeader"><i class="fa-solid fa-hashtag me-2"></i><span id="detajetTitle">Detajet e Faturës</span></div>
-        <div class="card-body">
-          <div class="mb-3"><label class="form-label fw-semibold"><span id="nrLabel">Nr. Faturës</span> <span class="text-danger">*</span></label><input type="text" id="nr_fatura" class="form-control" placeholder="001"></div>
-          <div class="mb-3"><label class="form-label fw-semibold"><span id="dataLabel">Data</span></label><input type="date" id="data_fatura" class="form-control"></div>
-          <div class="mb-3" id="afatiRow"><label class="form-label fw-semibold" id="afatiLabel">Afati i Pagesës</label><input type="date" id="data_skadimit" class="form-control"></div>
-          <div class="mb-3 d-none" id="validitetRow">
-            <label class="form-label fw-semibold">Validiteti</label>
-            <select id="validitet" class="form-select">
-              <option value="- ">-</option>
-              <option value="7 ditë">7 ditë</option>
-              <option value="15 ditë">15 ditë</option>
-              <option value="30 ditë" selected>30 ditë</option>
-              <option value="45 ditë">45 ditë</option>
-              <option value="60 ditë">60 ditë</option>
-              <option value="90 ditë">90 ditë</option>
-            </select>
-          </div>
-        </div>
-      </div>
-
-      <div class="card shadow-sm mb-4">
-        <div class="card-header section-header"><i class="fa-solid fa-coins me-2"></i>Monedha &amp; TVSH</div>
-        <div class="card-body">
-          <div class="mb-3"><label class="form-label fw-semibold">Monedha</label><select id="monedha" class="form-select" onchange="updateCurrency(); calcTotals()"><option value="ALL">🇦🇱 Lekë (ALL)</option><option value="EUR">🇪🇺 Euro (EUR)</option><option value="USD">🇺🇸 Dollar (USD)</option></select></div>
-          <div class="mb-3"><div class="form-check form-switch"><input class="form-check-input" type="checkbox" id="tvshCheck" onchange="toggleTvsh(); calcTotals()"><label class="form-check-label fw-semibold" for="tvshCheck">Apliko TVSH (20%)</label></div></div>
-          <div class="mb-3 d-none" id="tvshRateRow"><label class="form-label fw-semibold">Norma TVSH (%)</label><input type="number" id="tvsh_norma" class="form-control" value="20" min="0" max="100" step="0.1" oninput="calcTotals()"></div>
-          <div class="mb-3"><label class="form-label fw-semibold">Zbritje (%)</label><input type="number" id="zbritje" class="form-control" value="0" min="0" max="100" step="0.1" oninput="calcTotals()"></div>
-        </div>
-      </div>
-
-      <div class="card shadow-sm mb-4 card-totali" id="totaliCard">
-        <div class="card-header section-header"><i class="fa-solid fa-calculator me-2"></i>Totali</div>
-        <div class="card-body">
-          <div class="d-flex justify-content-between mb-2"><span class="text-muted">Nëntotali:</span><strong id="displayNentotali">L 0.00</strong></div>
-          <div class="d-flex justify-content-between mb-2 d-none" id="zbritjeRow"><span class="text-muted">Zbritje:</span><strong id="displayZbritje" class="text-danger">- L 0.00</strong></div>
-          <div class="d-flex justify-content-between mb-2 d-none" id="tvshRow"><span class="text-muted">TVSH (<span id="tvshPct">20</span>%):</span><strong id="displayTvsh">L 0.00</strong></div>
-          <hr>
-          <div class="d-flex justify-content-between"><span class="fw-bold fs-5" id="totalLabel">TOTALI:</span><span class="fw-bold fs-5 text-primary" id="displayTotal">L 0.00</span></div>
-        </div>
-      </div>
-
-      <div class="d-grid gap-2">
-        <button type="button" class="btn btn-preview btn-lg shadow" onclick="openPreview()"><i class="fa-solid fa-eye me-2"></i><span id="previewBtnText">Shiko Faturën</span></button>
-        <button type="button" class="btn btn-save btn-lg shadow" onclick="saveToArkiva()"><i class="fa-solid fa-database me-2"></i>Ruaj në Arkivë</button>
-        <button type="button" class="btn btn-pdf btn-lg shadow" id="downloadBtn" onclick="downloadPDF()"><i class="fa-solid fa-file-pdf me-2"></i><span id="downloadBtnText">Shkarko PDF</span></button>
-      </div>
-    </div>
-  </div>
-  </div>
-
-  <!-- TAB: ARKIVA -->
-  <div id="arkivaTab" class="d-none">
-    <div class="stats-grid" id="statsGrid"></div>
-    <div class="search-bar">
-      <input type="text" id="arkivaSearch" class="form-control" placeholder="Kërko sipas numrit ose klientit..." oninput="renderArkiva()">
-      <div class="filter-btns flex-shrink-0">
-        <button class="filter-btn active" onclick="setFilter('all', this)">Të gjitha</button>
-        <button class="filter-btn" onclick="setFilter('fature', this)">Fatura</button>
-        <button class="filter-btn pf" onclick="setFilter('preventiv', this)">Preventivë</button>
-      </div>
-    </div>
-    <div id="arkivaList"></div>
-  </div>
-
-  <!-- TAB: KONFIGURATOR KAMERASH -->
-  <div id="konfiguratorTab" class="d-none">
-    <div class="row g-4">
-      <div class="col-lg-8">
-        <div class="card shadow-sm mb-4">
-          <div class="card-header section-header"><i class="fa-solid fa-video me-2"></i>Kamera</div>
-          <div class="card-body">
-            <div class="row g-3">
-              <div class="col-12">
-                <label class="form-label fw-semibold">Rezolucioni</label>
-                <select class="form-select" id="cfg-cam-res">
-                  <option value="">Zgjidh rezolucionin</option>
-                  <option value="2">2 MP</option>
-                  <option value="4">4 MP</option>
-                  <option value="5">5 MP</option>
-                  <option value="6">6 MP</option>
-                  <option value="8">8 MP</option>
-                  <option value="12">12 MP</option>
-                </select>
-              </div>
-              <div class="col-12">
-                <label class="form-label fw-semibold">Lloji i kutisë</label>
-                <select class="form-select" id="cfg-cam-type">
-                  <option value="">Zgjidh llojin</option>
-                  <option value="analoge">Analoge</option>
-                  <option value="lan">LAN / IP</option>
-                </select>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div class="card shadow-sm mb-4">
-          <div class="card-header section-header"><i class="fa-solid fa-server me-2"></i>DVR / NVR / XVR</div>
-          <div class="card-body">
-            <div class="row g-3">
-              <div class="col-12">
-                <label class="form-label fw-semibold">Lloji</label>
-                <select class="form-select" id="cfg-dvr-type">
-                  <option value="">Zgjidh llojin</option>
-                  <option value="DVR">DVR</option>
-                  <option value="XVR">XVR</option>
-                  <option value="NVR">NVR</option>
-                </select>
-              </div>
-              <div class="col-12">
-                <label class="form-label fw-semibold">Rezolucioni</label>
-                <select class="form-select" id="cfg-dvr-res">
-                  <option value="">Zgjidh rezolucionin</option>
-                  <option value="2">2 MP</option>
-                  <option value="4">4 MP</option>
-                  <option value="5">5 MP</option>
-                  <option value="6">6 MP</option>
-                  <option value="8">8 MP</option>
-                  <option value="12">12 MP</option>
-                </select>
-              </div>
-              <div class="col-12">
-                <label class="form-label fw-semibold">Kanalet</label>
-                <select class="form-select" id="cfg-dvr-ch">
-                  <option value="">Zgjidh kanalet</option>
-                  <option value="4">4 Ch</option>
-                  <option value="8">8 Ch</option>
-                  <option value="16">16 Ch</option>
-                  <option value="32">32 Ch</option>
-                </select>
-              </div>
-              <div class="col-12" id="cfg-dvr-poe-row" style="display:none">
-                <label class="form-label fw-semibold">PoE (vetëm për NVR)</label>
-                <select class="form-select" id="cfg-dvr-poe">
-                  <option value="">Zgjidh PoE ose jo</option>
-                  <option value="PoE">PoE</option>
-                  <option value="Jo PoE">Jo PoE</option>
-                </select>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div class="card shadow-sm mb-4">
-          <div class="card-header section-header"><i class="fa-solid fa-network-wired me-2"></i>Switch PoE</div>
-          <div class="card-body">
-            <div class="row g-3">
-              <div class="col-12">
-                <label class="form-label fw-semibold">Portat</label>
-                <select class="form-select" id="cfg-switch-ports">
-                  <option value="">Zgjidh portat</option>
-                  <option value="4">4 Port</option>
-                  <option value="8">8 Port</option>
-                  <option value="16">16 Port</option>
-                  <option value="24">24 Port</option>
-                  <option value="32">32 Port</option>
-                </select>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div class="card shadow-sm mb-4">
-          <div class="card-header section-header"><i class="fa-solid fa-hard-drive me-2"></i>HDD</div>
-          <div class="card-body">
-            <div class="row g-3">
-              <div class="col-12">
-                <label class="form-label fw-semibold">Kapaciteti</label>
-                <select class="form-select" id="cfg-hdd-capacity">
-                  <option value="">Zgjidh kapacitetin</option>
-                  <option value="500GB">500 GB</option>
-                  <option value="1TB">1 TB</option>
-                  <option value="2TB">2 TB</option>
-                  <option value="3TB">3 TB</option>
-                  <option value="4TB">4 TB</option>
-                  <option value="5TB">5 TB</option>
-                  <option value="6TB">6 TB</option>
-                  <option value="8TB">8 TB</option>
-                  <option value="12TB">12 TB</option>
-                </select>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div class="col-lg-4">
-        <div class="card shadow-sm mb-4 card-totali">
-          <div class="card-header section-header"><i class="fa-solid fa-clipboard-list me-2"></i>Përmbledhje</div>
-          <div class="card-body">
-            <div class="summary-text" id="cfgSummary" style="font-size:0.95rem;line-height:1.6">Zgjidh opsionet më lart për të parë përmbledhjen.</div>
-          </div>
-        </div>
-
-        <div class="d-grid gap-2">
-          <button type="button" class="btn btn-preview btn-lg shadow" id="cfgAddBtn" onclick="addCameraConfigToInvoice()"><i class="fa-solid fa-plus me-2"></i>Shto në Faturë</button>
-          <button type="button" class="btn btn-outline-secondary btn-lg shadow" onclick="resetCameraConfig()"><i class="fa-solid fa-rotate-right me-2"></i>Pastro</button>
-        </div>
-      </div>
-    </div>
+<!-- ── PAGE TABS ───────────────────────────────────────────── -->
+<div class="nav-tabs-custom">
+  <div class="container-fluid px-3 d-flex">
+    <button class="nav-tab active" onclick="showTab('krijoTab', this)">
+      <i class="fa-solid fa-plus-circle me-1"></i>Krijo
+    </button>
+    <button class="nav-tab" onclick="showTab('arkivaTab', this)" id="arkivaTabBtn">
+      <i class="fa-solid fa-database me-1"></i>Arkiva
+      <span id="arkivaBadge" class="badge bg-primary rounded-pill ms-1" style="font-size:0.65rem">0</span>
+    </button>
   </div>
 </div>
 
-<!-- PREVIEW MODAL -->
+<!-- ══════════════════════════════════════════════════════════
+     TAB: KRIJO
+══════════════════════════════════════════════════════════ -->
+<div id="krijoTab" class="container-fluid px-3 py-3">
+
+  <!-- Editing banner -->
+  <div id="editingBanner" class="alert alert-warning d-none d-flex align-items-center justify-content-between gap-2 py-2 px-3 mb-3 rounded-3" style="font-size:0.85rem">
+    <span><i class="fa-solid fa-pen-to-square me-1"></i>Po editoni një dokument ekzistues</span>
+    <button class="btn btn-sm btn-outline-warning" onclick="clearEditing()">Anulo</button>
+  </div>
+
+  <div class="row g-3">
+
+    <!-- ── LEFT COLUMN ──────────────────────────────────────── -->
+    <div class="col-12 col-lg-8">
+
+      <!-- Lëshuesi -->
+      <div class="card shadow-sm mb-3">
+        <div class="card-header section-header" id="leshuesiHeader">
+          <i class="fa-solid fa-building me-2"></i>Lëshuesi
+        </div>
+        <div class="card-body">
+          <!-- Logo -->
+          <div class="mb-3">
+            <div class="logo-upload-area" onclick="document.getElementById('logoInput').click()">
+              <input type="file" id="logoInput" accept="image/*" class="d-none" onchange="handleLogo(event)">
+              <div id="logoPlaceholder">
+                <i class="fa-solid fa-image fa-lg text-muted me-2"></i>
+                <span class="text-muted small">Kliko për të ngarkuar logon</span>
+              </div>
+              <img id="logoPreview" src="" alt="Logo" class="d-none" style="max-height:70px;max-width:180px;object-fit:contain;">
+            </div>
+            <div class="d-flex gap-2 mt-2">
+              <button type="button" class="btn btn-sm btn-outline-primary" onclick="document.getElementById('logoInput').click()">
+                <i class="fa-solid fa-upload me-1"></i>Ngarko
+              </button>
+              <button type="button" class="btn btn-sm btn-outline-danger d-none" id="removeLogo" onclick="removeLogo()">
+                <i class="fa-solid fa-trash me-1"></i>Hiq
+              </button>
+            </div>
+          </div>
+
+          <div class="row g-2">
+            <div class="col-12">
+              <label class="form-label">Emri Kompanisë <span class="text-danger">*</span></label>
+              <input type="text" id="leshuesi_emri" class="form-control" value="Shkodra TECH">
+            </div>
+            <div class="col-6">
+              <label class="form-label">NIPT</label>
+              <input type="text" id="leshuesi_nipt" class="form-control" placeholder="K12345678A">
+            </div>
+            <div class="col-6">
+              <label class="form-label">Telefon</label>
+              <input type="text" id="leshuesi_tel" class="form-control" value="+355 674474801">
+            </div>
+            <div class="col-12">
+              <label class="form-label">Adresa</label>
+              <input type="text" id="leshuesi_adresa" class="form-control" value="Shkoder">
+            </div>
+            <div class="col-6">
+              <label class="form-label">Email</label>
+              <input type="email" id="leshuesi_email" class="form-control" value="arisheqi1@gmail.com">
+            </div>
+            <div class="col-6">
+              <label class="form-label">Web</label>
+              <input type="text" id="leshuesi_web" class="form-control" value="www.shkodratech.al">
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Blerësi -->
+      <div class="card shadow-sm mb-3">
+        <div class="card-header section-header" id="bleresHeader">
+          <i class="fa-solid fa-user me-2"></i><span id="bleresTitle">Blerësi</span>
+        </div>
+        <div class="card-body">
+          <div class="row g-2">
+            <div class="col-12">
+              <label class="form-label"><span id="bleresEmriLabel">Emri i Blerësit</span> <span class="text-danger">*</span></label>
+              <input type="text" id="bleres_emri" class="form-control" placeholder="Emri i Klientit">
+            </div>
+            <div class="col-6">
+              <label class="form-label">NIPT</label>
+              <input type="text" id="bleres_nipt" class="form-control">
+            </div>
+            <div class="col-6">
+              <label class="form-label">Telefon</label>
+              <input type="text" id="bleres_tel" class="form-control">
+            </div>
+            <div class="col-12">
+              <label class="form-label">Adresa</label>
+              <input type="text" id="bleres_adresa" class="form-control">
+            </div>
+            <div class="col-12">
+              <label class="form-label">Email</label>
+              <input type="email" id="bleres_email" class="form-control">
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Artikujt -->
+      <div class="card shadow-sm mb-3">
+        <div class="card-header section-header" id="artikujtHeader">
+          <i class="fa-solid fa-list me-2"></i><span id="artikujtTitle">Artikujt / Shërbimet</span>
+        </div>
+        <div class="card-body p-0">
+          <div id="itemsBody"></div>
+          <div class="p-3 border-top">
+            <button type="button" class="btn btn-outline-success btn-sm w-100" onclick="addRow()">
+              <i class="fa-solid fa-plus me-1"></i>Shto Artikull
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Shënime -->
+      <div class="card shadow-sm mb-3">
+        <div class="card-header section-header">
+          <i class="fa-solid fa-note-sticky me-2"></i>Shënime
+        </div>
+        <div class="card-body">
+          <textarea id="shenime" class="form-control" rows="3" placeholder="Shënime shtesë, kushte pagese..."></textarea>
+        </div>
+      </div>
+
+    </div><!-- /col-lg-8 -->
+
+    <!-- ── RIGHT COLUMN ─────────────────────────────────────── -->
+    <div class="col-12 col-lg-4">
+
+      <!-- Detajet e faturës -->
+      <div class="card shadow-sm mb-3">
+        <div class="card-header section-header" id="detajetHeader">
+          <i class="fa-solid fa-hashtag me-2"></i><span id="detajetTitle">Detajet e Faturës</span>
+        </div>
+        <div class="card-body">
+          <div class="row g-2">
+            <div class="col-7">
+              <label class="form-label"><span id="nrLabel">Nr. Faturës</span> <span class="text-danger">*</span></label>
+              <input type="text" id="nr_fatura" class="form-control" placeholder="001">
+            </div>
+            <div class="col-5">
+              <label class="form-label"><span id="dataLabel">Data</span></label>
+              <input type="date" id="data_fatura" class="form-control">
+            </div>
+            <div class="col-12" id="afatiRow">
+              <label class="form-label fw-semibold" id="afatiLabel">Afati i Pagesës</label>
+              <input type="date" id="data_skadimit" class="form-control">
+            </div>
+            <div class="col-12 d-none" id="validitetRow">
+              <label class="form-label">Validiteti</label>
+              <select id="validitet" class="form-select">
+                <option value="- ">-</option>
+                <option value="7 ditë">7 ditë</option>
+                <option value="15 ditë">15 ditë</option>
+                <option value="30 ditë" selected>30 ditë</option>
+                <option value="45 ditë">45 ditë</option>
+                <option value="60 ditë">60 ditë</option>
+                <option value="90 ditë">90 ditë</option>
+              </select>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Monedha & TVSH -->
+      <div class="card shadow-sm mb-3">
+        <div class="card-header section-header">
+          <i class="fa-solid fa-coins me-2"></i>Monedha &amp; TVSH
+        </div>
+        <div class="card-body">
+          <div class="row g-2">
+            <div class="col-12">
+              <label class="form-label">Monedha</label>
+              <select id="monedha" class="form-select" onchange="updateCurrency(); calcTotals()">
+                <option value="ALL">🇦🇱 Lekë (ALL)</option>
+                <option value="EUR">🇪🇺 Euro (EUR)</option>
+                <option value="USD">🇺🇸 Dollar (USD)</option>
+              </select>
+            </div>
+            <div class="col-12">
+              <label class="form-label">Zbritje (%)</label>
+              <input type="number" id="zbritje" class="form-control" value="0" min="0" max="100" step="0.1" oninput="calcTotals()">
+            </div>
+            <div class="col-12">
+              <div class="form-check form-switch mt-1">
+                <input class="form-check-input" type="checkbox" id="tvshCheck" onchange="toggleTvsh(); calcTotals()">
+                <label class="form-check-label" for="tvshCheck">Apliko TVSH (20%)</label>
+              </div>
+            </div>
+            <div class="col-12 d-none" id="tvshRateRow">
+              <label class="form-label">Norma TVSH (%)</label>
+              <input type="number" id="tvsh_norma" class="form-control" value="20" min="0" max="100" step="0.1" oninput="calcTotals()">
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Totali -->
+      <div class="card shadow-sm mb-3 card-totali" id="totaliCard">
+        <div class="card-header section-header">
+          <i class="fa-solid fa-calculator me-2"></i>Totali
+        </div>
+        <div class="card-body">
+          <div class="d-flex justify-content-between mb-2">
+            <span class="text-muted small">Nëntotali</span>
+            <strong id="displayNentotali">L 0.00</strong>
+          </div>
+          <div class="d-flex justify-content-between mb-2 d-none" id="zbritjeRow">
+            <span class="text-muted small">Zbritje</span>
+            <strong id="displayZbritje" class="text-danger">- L 0.00</strong>
+          </div>
+          <div class="d-flex justify-content-between mb-2 d-none" id="tvshRow">
+            <span class="text-muted small">TVSH (<span id="tvshPct">20</span>%)</span>
+            <strong id="displayTvsh">L 0.00</strong>
+          </div>
+          <hr class="my-2">
+          <div class="d-flex justify-content-between align-items-center">
+            <span class="fw-bold" id="totalLabel">TOTALI</span>
+            <span class="fw-bold fs-5 text-primary" id="displayTotal">L 0.00</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Butonat kryesorë -->
+      <div class="d-grid gap-2 mb-4">
+        <button type="button" class="btn btn-preview btn-lg" onclick="openPreview()">
+          <i class="fa-solid fa-eye me-2"></i><span id="previewBtnText">Shiko Faturën</span>
+        </button>
+        <div class="row g-2">
+          <div class="col-6">
+            <button type="button" class="btn btn-save btn-lg w-100" onclick="saveToArkiva()">
+              <i class="fa-solid fa-database me-2"></i>Ruaj
+            </button>
+          </div>
+          <div class="col-6">
+            <button type="button" class="btn btn-pdf btn-lg w-100" id="downloadBtn" onclick="downloadPDF()">
+              <i class="fa-solid fa-file-pdf me-2"></i><span id="downloadBtnText">PDF</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /col-lg-4 -->
+  </div><!-- /row -->
+</div><!-- /krijoTab -->
+
+<!-- ══════════════════════════════════════════════════════════
+     TAB: ARKIVA
+══════════════════════════════════════════════════════════ -->
+<div id="arkivaTab" class="d-none container-fluid px-3 py-3">
+  <div class="stats-grid" id="statsGrid"></div>
+  <div class="search-bar">
+    <input type="text" id="arkivaSearch" class="form-control" placeholder="Kërko klient ose nr. faturë..." oninput="renderArkiva()">
+  </div>
+  <div class="filter-btns">
+    <button class="filter-btn active" onclick="setFilter('all', this)">Të gjitha</button>
+    <button class="filter-btn" onclick="setFilter('fature', this)">Fatura</button>
+    <button class="filter-btn pf" onclick="setFilter('preventiv', this)">Preventivë</button>
+  </div>
+  <div id="arkivaList"></div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════
+     MODALS
+══════════════════════════════════════════════════════════ -->
+
+<!-- Preview -->
 <div class="modal fade" id="previewModal" tabindex="-1">
   <div class="modal-dialog modal-xl modal-dialog-scrollable" id="previewModalDialog">
     <div class="modal-content">
-      <div class="modal-header" id="previewModalHeader" style="background:#1a56db">
-        <h5 class="modal-title text-white"><i class="fa-solid fa-eye me-2"></i><span id="previewModalTitle">Pamja e Faturës</span></h5>
+      <div class="modal-header py-2" id="previewModalHeader" style="background:#1a56db">
+        <h6 class="modal-title text-white mb-0">
+          <i class="fa-solid fa-eye me-2"></i><span id="previewModalTitle">Pamja e Faturës</span>
+        </h6>
         <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
       </div>
       <div class="modal-body p-0">
@@ -310,21 +329,27 @@
           <div id="invoicePreview"></div>
         </div>
       </div>
-      <div class="modal-footer flex-wrap gap-2">
-        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Mbyll</button>
-        <button type="button" class="btn btn-outline-dark" onclick="printInvoice()"><i class="fa-solid fa-print me-2"></i>Printo</button>
-        <button type="button" class="btn btn-pdf" id="modalDownloadBtn" onclick="downloadPDF()"><i class="fa-solid fa-file-pdf me-2"></i><span id="modalDownloadBtnText">Shkarko PDF</span></button>
+      <div class="modal-footer flex-wrap gap-2 py-2">
+        <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Mbyll</button>
+        <button type="button" class="btn btn-sm btn-outline-dark" onclick="printInvoice()">
+          <i class="fa-solid fa-print me-1"></i>Printo
+        </button>
+        <button type="button" class="btn btn-sm btn-pdf" id="modalDownloadBtn" onclick="downloadPDF()">
+          <i class="fa-solid fa-file-pdf me-1"></i><span id="modalDownloadBtnText">Shkarko PDF</span>
+        </button>
       </div>
     </div>
   </div>
 </div>
 
-<!-- VIEW ARKIVA MODAL -->
+<!-- View Arkiva -->
 <div class="modal fade" id="viewArkivaModal" tabindex="-1">
   <div class="modal-dialog modal-xl modal-dialog-scrollable">
     <div class="modal-content">
-      <div class="modal-header" id="arkivaModalHeader" style="background:#1a56db">
-        <h5 class="modal-title text-white"><i class="fa-solid fa-eye me-2"></i>Shiko Dokumentin</h5>
+      <div class="modal-header py-2" id="arkivaModalHeader" style="background:#1a56db">
+        <h6 class="modal-title text-white mb-0">
+          <i class="fa-solid fa-eye me-2"></i>Shiko Dokumentin
+        </h6>
         <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
       </div>
       <div class="modal-body p-0">
@@ -332,31 +357,39 @@
           <div id="arkivaPreviewContent"></div>
         </div>
       </div>
-      <div class="modal-footer flex-wrap gap-2">
-        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Mbyll</button>
-        <button type="button" class="btn btn-primary" onclick="loadFromArkiva(currentViewId)"><i class="fa-solid fa-pen me-1"></i>Edito</button>
-        <button type="button" class="btn btn-pdf" id="arkivaDownloadBtn" onclick="downloadPDFFromData(currentViewData)"><i class="fa-solid fa-file-pdf me-2"></i>Shkarko PDF</button>
+      <div class="modal-footer flex-wrap gap-2 py-2">
+        <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Mbyll</button>
+        <button type="button" class="btn btn-sm btn-primary" onclick="loadFromArkiva(currentViewId)">
+          <i class="fa-solid fa-pen me-1"></i>Edito
+        </button>
+        <button type="button" class="btn btn-sm btn-pdf" id="arkivaDownloadBtn" onclick="downloadPDFFromData(currentViewData)">
+          <i class="fa-solid fa-file-pdf me-1"></i>Shkarko PDF
+        </button>
       </div>
     </div>
   </div>
 </div>
 
-<!-- DELETE CONFIRM MODAL -->
+<!-- Delete confirm -->
 <div class="modal fade" id="deleteModal" tabindex="-1">
   <div class="modal-dialog modal-sm">
     <div class="modal-content">
-      <div class="modal-header"><h5 class="modal-title">Konfirmo fshirjen</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
-      <div class="modal-body">Jeni i sigurt që doni të fshini këtë dokument?</div>
-      <div class="modal-footer">
-        <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Anulo</button>
-        <button type="button" class="btn btn-danger btn-sm" id="confirmDeleteBtn">Fshi</button>
+      <div class="modal-header py-2">
+        <h6 class="modal-title">Konfirmo fshirjen</h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body small">Jeni i sigurt që doni të fshini këtë dokument?</div>
+      <div class="modal-footer py-2 gap-2">
+        <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Anulo</button>
+        <button type="button" class="btn btn-sm btn-danger" id="confirmDeleteBtn">Fshi</button>
       </div>
     </div>
   </div>
 </div>
 
+<!-- ── FOOTER ──────────────────────────────────────────────── -->
 <footer class="footer-bar">
-  <div class="container d-flex flex-column flex-md-row align-items-center justify-content-between gap-2">
+  <div class="container-fluid px-3 d-flex flex-column flex-md-row align-items-center justify-content-between gap-1">
     <small>© 2026 SHKODRA TECH — Të gjitha të drejtat e rezervuara</small>
   </div>
 </footer>
