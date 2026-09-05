@@ -367,6 +367,7 @@ body {
 
 .arkiva-nr     { font-weight: 700; font-size: 0.95rem; }
 .arkiva-klient { color: var(--muted); font-size: 0.85rem; margin-top: 2px; }
+.arkiva-emertim { color: var(--accent); font-size: 0.78rem; font-weight: 600; margin-top: 1px; }
 .arkiva-total  { font-weight: 700; color: var(--primary); font-size: 0.95rem; }
 .arkiva-date   { font-size: 0.78rem; color: var(--muted); margin-top: 2px; }
 .arkiva-actions { display: flex; gap: 6px; }
