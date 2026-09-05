@@ -52,22 +52,17 @@ function injectKursiUI() {
 }
 
 // ── TABS ─────────────────────────────────────────────────────────────
-let justFinishedDoc = false; // u bë true pasi ruhet në Arkivë ose shkarkohet PDF
-
 function showTab(tabId, btn) {
   document.querySelectorAll('[id$="Tab"]').forEach(t => t.classList.add('d-none'));
   document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
   document.getElementById(tabId).classList.remove('d-none');
   btn.classList.add('active');
   if (tabId === 'arkivaTab') renderArkiva();
-  // Nëse kalohet te "Krijo" pasi një dokument sapo është ruajtur/shkarkuar, fillo një dokument të ri
+  // Çdo klikim te "Krijo" (kur s'jemi duke editur një dokument ekzistues) fillon një dokument të ri
   if (tabId === 'krijoTab' && !editingId) {
     const banner = document.getElementById('editingBanner');
     if (banner) banner.style.display = 'none';
-    if (justFinishedDoc) {
-      resetFormForNew();
-      justFinishedDoc = false;
-    }
+    resetFormForNew();
   }
 }
 
@@ -194,7 +189,6 @@ async function saveToArkiva() {
       }, 2000);
     }
     await updateArkivaBadge();
-    justFinishedDoc = true;
   } catch(e) {
     alert('Gabim gjatë ruajtjes: ' + e.message);
   }
@@ -829,7 +823,7 @@ function printInvoice() {
   win.document.close(); win.focus(); setTimeout(()=>{win.print();win.close();},600);
 }
 
-async function downloadPDF() { const d=collectData(); if(!validate(d)) return; await generatePDF(d); justFinishedDoc = true; }
+async function downloadPDF() { const d=collectData(); if(!validate(d)) return; await generatePDF(d); }
 async function downloadPDFFromData(d) { if(!d) return; await generatePDF(d); }
 
 async function generatePDF(d) {
