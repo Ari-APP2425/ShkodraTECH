@@ -35,23 +35,6 @@ function otherCurrencySymbol(curr) {
   return null;
 }
 
-// Injekton fushën "Emërtimi i Preventivit" krah emrit të klientit (pa prekur HTML-in origjinal)
-function injectEmertimiUI() {
-  if (document.getElementById('emertimRow')) return; // tashmë ekziston
-  const bleresEmriInput = document.getElementById('bleres_emri');
-  if (!bleresEmriInput) return;
-  const container = bleresEmriInput.closest('.mb-3') || bleresEmriInput.parentElement;
-  const wrap = document.createElement('div');
-  wrap.id = 'emertimRow';
-  wrap.className = 'mb-3';
-  wrap.innerHTML = `
-    <label class="form-label">Emërtimi i Preventivit</label>
-    <input type="text" id="bleres_emertim" class="form-control" placeholder="p.sh. Kamera Hikvision, Sistem Alarmi...">
-  `;
-  container.insertAdjacentElement('afterend', wrap);
-  wrap.classList.toggle('d-none', docType === 'fature');
-}
-
 // Injekton fushën e kursit pranë selektorit të monedhës (pa prekur HTML-in origjinal)
 function injectKursiUI() {
   if (document.getElementById('kursiInput')) return; // tashmë ekziston
@@ -206,7 +189,7 @@ async function renderArkiva() {
 
   const filtered = invoices.filter(inv => {
     const matchType = currentFilter === 'all' || inv.docType === currentFilter;
-    const matchSearch = !search || inv.nr_fatura.toLowerCase().includes(search) || (inv.bleres?.emri||'').toLowerCase().includes(search) || (inv.bleres?.emertim||'').toLowerCase().includes(search);
+    const matchSearch = !search || inv.nr_fatura.toLowerCase().includes(search) || (inv.bleres?.emri||'').toLowerCase().includes(search);
     return matchType && matchSearch;
   });
 
@@ -235,7 +218,6 @@ async function renderArkiva() {
           <span class="arkiva-badge ${inv.docType==='fature'?'badge-fature':'badge-preventiv'}">${inv.docType==='fature'?'FATURË':'PREVENTIV'}</span>
           <div class="arkiva-nr mt-1">${inv.nr_fatura}</div>
           <div class="arkiva-klient">${inv.bleres?.emri||'—'}</div>
-          ${inv.bleres?.emertim?`<div class="arkiva-emertim">${inv.bleres.emertim}</div>`:''}
         </div>
       </div>
       <div class="text-end">
@@ -289,7 +271,6 @@ async function loadFromArkiva(id) {
   document.getElementById('leshuesi_email').value = d.leshuesi?.email || '';
   document.getElementById('leshuesi_web').value = d.leshuesi?.web || '';
   document.getElementById('bleres_emri').value = d.bleres?.emri || '';
-  if (document.getElementById('bleres_emertim')) document.getElementById('bleres_emertim').value = d.bleres?.emertim || '';
   document.getElementById('bleres_nipt').value = d.bleres?.nipt || '';
   document.getElementById('bleres_adresa').value = d.bleres?.adresa || '';
   document.getElementById('bleres_tel').value = d.bleres?.tel || '';
@@ -374,7 +355,6 @@ function setDocType(type) {
   document.getElementById('displayTotal').style.color = isFature ? '' : '#0e9f6e';
   document.getElementById('bleresTitle').textContent = isFature ? 'Informacioni i Blerësit' : 'Informacioni i Klientit';
   document.getElementById('bleresEmriLabel').textContent = isFature ? 'Emri i Blerësit' : 'Emri i Klientit';
-  document.getElementById('emertimRow')?.classList.toggle('d-none', isFature);
   document.getElementById('artikujtTitle').textContent = isFature ? 'Artikujt / Shërbimet' : 'Artikujt e Preventivit';
   document.getElementById('detajetTitle').textContent = isFature ? 'Detajet e Faturës' : 'Detajet e Preventivit';
   document.getElementById('nrLabel').textContent = isFature ? 'Nr. Faturës' : 'Nr. Preventivit';
@@ -407,7 +387,6 @@ window.onload = () => {
     document.getElementById('nr_fatura').value = 'F-00001';
   }
   injectKursiUI();
-  injectEmertimiUI();
   addRow(); calcTotals(); updateArkivaBadge();
 };
 
@@ -439,12 +418,13 @@ function removeLogo() {
 const RESOLUTIONS = ['2MP','4MP','5MP','6MP','8MP','12MP'];
 const CAMERA_CONN = ['Analoge','LAN','Wifi'];
 const CHANNELS = ['4CH','8CH','16CH','32CH'];
+const HDD_SIZES = ['500GB','1TB','2TB','3TB','4TB','5TB','6TB','8TB','12TB'];
+const CABLE_TYPES = ['Coax','LAN'];
 
 function addRow(desc='',qty=1,unit='',price=0,type='Kamera',res='',extra='') {
   rowCounter++;
   const id=rowCounter;
   const unitOpts=UNITS.map(u=>`<option value="${u}" ${u===unit?'selected':''}>${u||'—'}</option>`).join('');
-  const resOpts=RESOLUTIONS.map(r=>`<option value="${r}" ${r===res?'selected':''}>${r}</option>`).join('');
   const html=`<div class="item-row" id="row-${id}">
     <div class="item-row-top">
       <div class="item-type-group">
@@ -453,10 +433,12 @@ function addRow(desc='',qty=1,unit='',price=0,type='Kamera',res='',extra='') {
           <option value="DVR" ${type==='DVR'?'selected':''}>DVR</option>
           <option value="NVR" ${type==='NVR'?'selected':''}>NVR</option>
           <option value="XVR" ${type==='XVR'?'selected':''}>XVR</option>
+          <option value="HDD" ${type==='HDD'?'selected':''}>HDD</option>
+          <option value="Kuti" ${type==='Kuti'?'selected':''}>Kuti (vetë)</option>
+          <option value="Cavo" ${type==='Cavo'?'selected':''}>Cavo</option>
         </select>
         <select id="res-${id}" class="form-select form-select-sm" onchange="updateSpec(${id})">
-          <option value="">MP...</option>
-          ${resOpts}
+          ${buildResOptions(type,res)}
         </select>
         <select id="extra-${id}" class="form-select form-select-sm" onchange="updateSpec(${id})"></select>
       </div>
@@ -488,15 +470,40 @@ function addRow(desc='',qty=1,unit='',price=0,type='Kamera',res='',extra='') {
   calcRowTotal(id);
 }
 
+function buildResOptions(type,res) {
+  // Zgjedh listën e opsioneve për selektorin e dytë (MP / Kapaciteti HDD) sipas tipit
+  if (type==='HDD') {
+    return `<option value="">Kapaciteti...</option>` + HDD_SIZES.map(s=>`<option value="${s}" ${s===res?'selected':''}>${s}</option>`).join('');
+  }
+  if (type==='Kuti' || type==='Cavo') {
+    return `<option value="">—</option>`;
+  }
+  return `<option value="">MP...</option>` + RESOLUTIONS.map(r=>`<option value="${r}" ${r===res?'selected':''}>${r}</option>`).join('');
+}
+
+function updateResOptions(id,type,res='') {
+  const resSelect=document.getElementById('res-'+id);
+  if(!resSelect) return;
+  resSelect.innerHTML=buildResOptions(type,res);
+}
+
 function populateExtraOptions(id,type) {
   const extraSelect=document.getElementById('extra-'+id);
   if(!extraSelect) return;
-  const isCamera=type==='Kamera';
-  const opts=isCamera?CAMERA_CONN:CHANNELS;
-  extraSelect.innerHTML=`<option value="">${isCamera?'Lidhja...':'Kanalet...'}</option>`+opts.map(o=>`<option value="${o}">${o}</option>`).join('');
+  if (type==='Kamera') {
+    extraSelect.innerHTML=`<option value="">Lidhja...</option>`+CAMERA_CONN.map(o=>`<option value="${o}">${o}</option>`).join('');
+  } else if (type==='DVR' || type==='NVR' || type==='XVR') {
+    extraSelect.innerHTML=`<option value="">Kanalet...</option>`+CHANNELS.map(o=>`<option value="${o}">${o}</option>`).join('');
+  } else if (type==='Cavo') {
+    extraSelect.innerHTML=`<option value="">Lloji...</option>`+CABLE_TYPES.map(o=>`<option value="${o}">${o}</option>`).join('');
+  } else {
+    // HDD dhe Kuti nuk kanë nevojë për fushën shtesë
+    extraSelect.innerHTML=`<option value="">—</option>`;
+  }
 }
 
 function onTypeChange(id) {
+  updateResOptions(id,document.getElementById('type-'+id).value);
   populateExtraOptions(id,document.getElementById('type-'+id).value);
   updateSpec(id);
 }
@@ -576,7 +583,7 @@ function collectData() {
   return {
     docType, isFature: docType==='fature',
     leshuesi:{emri:document.getElementById('leshuesi_emri').value,nipt:document.getElementById('leshuesi_nipt').value,adresa:document.getElementById('leshuesi_adresa').value,tel:document.getElementById('leshuesi_tel').value,email:document.getElementById('leshuesi_email').value,web:document.getElementById('leshuesi_web').value},
-    bleres:{emri:document.getElementById('bleres_emri').value,emertim:document.getElementById('bleres_emertim')?.value||'',nipt:document.getElementById('bleres_nipt').value,adresa:document.getElementById('bleres_adresa').value,tel:document.getElementById('bleres_tel').value,email:document.getElementById('bleres_email').value},
+    bleres:{emri:document.getElementById('bleres_emri').value,nipt:document.getElementById('bleres_nipt').value,adresa:document.getElementById('bleres_adresa').value,tel:document.getElementById('bleres_tel').value,email:document.getElementById('bleres_email').value},
     nr_fatura:document.getElementById('nr_fatura').value,
     data_fatura:document.getElementById('data_fatura').value,
     data_skadimit:document.getElementById('data_skadimit').value,
@@ -615,7 +622,7 @@ function buildPreviewHTML(d) {
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:24px">
       <div style="background:#f8fafc;border-left:4px solid ${ac};padding:12px 16px;border-radius:6px"><h6 style="font-size:0.72rem;text-transform:uppercase;letter-spacing:0.8px;color:#6b7280;margin-bottom:6px">LËSHUAR NGA</h6><p style="margin:0;font-size:0.88rem;line-height:1.6"><strong>${d.leshuesi?.emri}</strong><br>${d.leshuesi?.nipt?`NIPT: ${d.leshuesi.nipt}<br>`:''}${d.leshuesi?.adresa?d.leshuesi.adresa+'<br>':''}${d.leshuesi?.tel?d.leshuesi.tel+'<br>':''}${d.leshuesi?.email||''}</p></div>
-      <div style="background:#f8fafc;border-left:4px solid ${ac};padding:12px 16px;border-radius:6px"><h6 style="font-size:0.72rem;text-transform:uppercase;letter-spacing:0.8px;color:#6b7280;margin-bottom:6px">${d.isFature?'FATURUAR PËR':'PËRGATITUR PËR'}</h6><p style="margin:0;font-size:0.88rem;line-height:1.6"><strong>${d.bleres?.emri||'—'}</strong>${d.bleres?.emertim?` <span style="font-weight:700;color:${ac}">— ${d.bleres.emertim}</span>`:''}<br>${d.bleres?.nipt?`NIPT: ${d.bleres.nipt}<br>`:''}${d.bleres?.adresa?d.bleres.adresa+'<br>':''}${d.bleres?.tel?d.bleres.tel+'<br>':''}${d.bleres?.email||''}</p></div>
+      <div style="background:#f8fafc;border-left:4px solid ${ac};padding:12px 16px;border-radius:6px"><h6 style="font-size:0.72rem;text-transform:uppercase;letter-spacing:0.8px;color:#6b7280;margin-bottom:6px">${d.isFature?'FATURUAR PËR':'PËRGATITUR PËR'}</h6><p style="margin:0;font-size:0.88rem;line-height:1.6"><strong>${d.bleres?.emri||'—'}</strong><br>${d.bleres?.nipt?`NIPT: ${d.bleres.nipt}<br>`:''}${d.bleres?.adresa?d.bleres.adresa+'<br>':''}${d.bleres?.tel?d.bleres.tel+'<br>':''}${d.bleres?.email||''}</p></div>
     </div>
     <table style="width:100%;border-collapse:collapse;margin-bottom:20px">
       <thead><tr><th style="background:${hb};color:#fff;padding:8px 12px;width:35px">#</th><th style="background:${hb};color:#fff;padding:8px 12px">Përshkrimi</th><th style="background:${hb};color:#fff;padding:8px 12px;text-align:center;width:60px">Sasia</th><th style="background:${hb};color:#fff;padding:8px 12px;text-align:center;width:70px">Njësia</th><th style="background:${hb};color:#fff;padding:8px 12px;text-align:right;width:100px">Çmimi</th><th style="background:${hb};color:#fff;padding:8px 12px;text-align:right;width:110px">Totali</th></tr></thead>
