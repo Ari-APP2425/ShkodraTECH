@@ -10,6 +10,8 @@ let editingId = null; // ID i dokumentit që po editohet
 const UNITS = ['','copë','metër','paketë'];
 const SYMBOLS = { ALL: 'L', EUR: '€', USD: '$' };
 let currSymbol = 'L';
+let prevCurrency = 'ALL';
+const EUR_ALL_RATE = 100; // Kursi fiks: 1 EUR = 100 Lekë
 
 // ── TABS ─────────────────────────────────────────────────────────────
 function showTab(tabId, btn) {
@@ -241,7 +243,8 @@ async function loadFromArkiva(id) {
   document.getElementById('validitet').value = d.validitet || '30 ditë';
   document.getElementById('shenime').value = d.shenime || '';
   document.getElementById('monedha').value = d.monedha || 'ALL';
-  updateCurrency();
+  prevCurrency = document.getElementById('monedha').value;
+  currSymbol = SYMBOLS[prevCurrency] || 'L';
   document.getElementById('zbritje').value = d.disc || 0;
   document.getElementById('tvshCheck').checked = d.tvshOn || false;
   document.getElementById('tvsh_norma').value = d.tvshRate || 20;
@@ -349,7 +352,36 @@ window.onload = () => {
   addRow(); calcTotals(); updateArkivaBadge();
 };
 
-function updateCurrency() { currSymbol = SYMBOLS[document.getElementById('monedha').value] || 'L'; calcTotals(); }
+function getCurrencyFactor(from, to) {
+  if (from === to) return 1;
+  if (from === 'ALL' && to === 'EUR') return 1 / EUR_ALL_RATE;
+  if (from === 'EUR' && to === 'ALL') return EUR_ALL_RATE;
+  return null; // Për USD nuk ka kurs fiks të vendosur, çmimet nuk konvertohen automatikisht
+}
+
+function convertRowPrices(factor) {
+  document.querySelectorAll('#itemsBody .item-row').forEach(row => {
+    const id = row.id.replace('row-', '');
+    const priceInput = document.getElementById('price-' + id);
+    if (priceInput) {
+      const val = parseFloat(priceInput.value) || 0;
+      priceInput.value = Math.round(val * factor * 100) / 100;
+    }
+  });
+}
+
+function updateCurrency() {
+  const newCurrency = document.getElementById('monedha').value;
+  if (newCurrency !== prevCurrency) {
+    const factor = getCurrencyFactor(prevCurrency, newCurrency);
+    if (factor !== null) {
+      convertRowPrices(factor);
+    }
+  }
+  currSymbol = SYMBOLS[newCurrency] || 'L';
+  prevCurrency = newCurrency;
+  calcTotals();
+}
 function toggleTvsh() {
   const on = document.getElementById('tvshCheck').checked;
   document.getElementById('tvshRateRow').classList.toggle('d-none', !on);
@@ -377,12 +409,24 @@ function removeLogo() {
 const RESOLUTIONS = ['2MP','4MP','5MP','6MP','8MP','12MP'];
 const CAMERA_CONN = ['Analoge','LAN'];
 const CHANNELS = ['4CH','8CH','16CH','32CH'];
+const POE_OPTIONS = ['PoE','Jo PoE'];
+const SWITCH_PORTS = ['4 Port','8 Port','16 Port','24 Port','32 Port'];
+const HDD_CAPACITY = ['500GB','1TB','2TB','3TB','4TB','5TB','6TB','8TB','12TB'];
 
-function addRow(desc='',qty=1,unit='',price=0,type='Kamera',res='',extra='') {
+// Çdo tip artikulli ka deri në 3 fusha specifikimi (spec1/spec2/spec3), me etiketë dhe opsionet e veta
+const TYPE_SPECS = {
+  'Kamera':     [ {label:'MP...',        options:RESOLUTIONS}, {label:'Lidhja...',  options:CAMERA_CONN} ],
+  'DVR':        [ {label:'MP...',        options:RESOLUTIONS}, {label:'Kanalet...', options:CHANNELS} ],
+  'XVR':        [ {label:'MP...',        options:RESOLUTIONS}, {label:'Kanalet...', options:CHANNELS} ],
+  'NVR':        [ {label:'MP...',        options:RESOLUTIONS}, {label:'Kanalet...', options:CHANNELS}, {label:'PoE...', options:POE_OPTIONS} ],
+  'Switch PoE': [ {label:'Portat...',    options:SWITCH_PORTS} ],
+  'HDD':        [ {label:'Kapaciteti...',options:HDD_CAPACITY} ]
+};
+
+function addRow(desc='',qty=1,unit='',price=0,type='Kamera',specs=[]) {
   rowCounter++;
   const id=rowCounter;
   const unitOpts=UNITS.map(u=>`<option value="${u}" ${u===unit?'selected':''}>${u||'—'}</option>`).join('');
-  const resOpts=RESOLUTIONS.map(r=>`<option value="${r}" ${r===res?'selected':''}>${r}</option>`).join('');
   const html=`<div class="item-row" id="row-${id}">
     <div class="item-row-top">
       <div class="item-type-group">
@@ -391,12 +435,12 @@ function addRow(desc='',qty=1,unit='',price=0,type='Kamera',res='',extra='') {
           <option value="DVR" ${type==='DVR'?'selected':''}>DVR</option>
           <option value="NVR" ${type==='NVR'?'selected':''}>NVR</option>
           <option value="XVR" ${type==='XVR'?'selected':''}>XVR</option>
+          <option value="Switch PoE" ${type==='Switch PoE'?'selected':''}>Switch PoE</option>
+          <option value="HDD" ${type==='HDD'?'selected':''}>HDD</option>
         </select>
-        <select id="res-${id}" class="form-select form-select-sm" onchange="updateSpec(${id})">
-          <option value="">MP...</option>
-          ${resOpts}
-        </select>
-        <select id="extra-${id}" class="form-select form-select-sm" onchange="updateSpec(${id})"></select>
+        <select id="spec1-${id}" class="form-select form-select-sm" onchange="updateSpec(${id})"></select>
+        <select id="spec2-${id}" class="form-select form-select-sm" onchange="updateSpec(${id})"></select>
+        <select id="spec3-${id}" class="form-select form-select-sm" onchange="updateSpec(${id})"></select>
       </div>
       <button type="button" class="btn btn-sm btn-outline-danger flex-shrink-0" onclick="removeRow(${id})"><i class="fa-solid fa-xmark"></i></button>
     </div>
@@ -421,31 +465,39 @@ function addRow(desc='',qty=1,unit='',price=0,type='Kamera',res='',extra='') {
     </div>
   </div>`;
   document.getElementById('itemsBody').insertAdjacentHTML('beforeend',html);
-  populateExtraOptions(id,type);
-  if(extra) document.getElementById('extra-'+id).value=extra;
+  populateSpecs(id,type,specs);
   calcRowTotal(id);
 }
 
-function populateExtraOptions(id,type) {
-  const extraSelect=document.getElementById('extra-'+id);
-  if(!extraSelect) return;
-  const isCamera=type==='Kamera';
-  const opts=isCamera?CAMERA_CONN:CHANNELS;
-  extraSelect.innerHTML=`<option value="">${isCamera?'Lidhja...':'Kanalet...'}</option>`+opts.map(o=>`<option value="${o}">${o}</option>`).join('');
+function populateSpecs(id,type,values=[]) {
+  const defs=TYPE_SPECS[type]||[];
+  for (let i=0;i<3;i++) {
+    const sel=document.getElementById('spec'+(i+1)+'-'+id);
+    if(!sel) continue;
+    const def=defs[i];
+    if (def) {
+      sel.innerHTML=`<option value="">${def.label}</option>`+def.options.map(o=>`<option value="${o}">${o}</option>`).join('');
+      sel.style.display='';
+      if (values[i]) sel.value=values[i];
+    } else {
+      sel.innerHTML='';
+      sel.style.display='none';
+    }
+  }
 }
 
 function onTypeChange(id) {
-  populateExtraOptions(id,document.getElementById('type-'+id).value);
+  populateSpecs(id,document.getElementById('type-'+id).value);
   updateSpec(id);
 }
 
 function updateSpec(id) {
   const type=document.getElementById('type-'+id).value;
-  const res=document.getElementById('res-'+id).value;
-  const extra=document.getElementById('extra-'+id).value;
+  const defs=TYPE_SPECS[type]||[];
+  const vals=defs.map((_,i)=>document.getElementById('spec'+(i+1)+'-'+id)?.value||'').filter(Boolean);
   const descInput=document.getElementById('desc-'+id);
-  if(res||extra) {
-    descInput.value=[type,res,extra].filter(Boolean).join(' ');
+  if(vals.length) {
+    descInput.value=[type,...vals].filter(Boolean).join(' ');
     calcTotals();
   }
 }
@@ -722,35 +774,62 @@ async function generatePDF(d) {
 }
 
 // ── KONFIGURATOR KAMERASH (i integruar në faturë) ──────────────────────
+const CFG_FIELD_IDS = ['cfg-cam-res','cfg-cam-type','cfg-dvr-type','cfg-dvr-res','cfg-dvr-ch','cfg-dvr-poe','cfg-switch-ports','cfg-hdd-capacity'];
+
+function cfgToggleDvrPoeRow() {
+  const dvrType = document.getElementById('cfg-dvr-type').value;
+  const poeRow = document.getElementById('cfg-dvr-poe-row');
+  if (!poeRow) return;
+  if (dvrType === 'NVR') {
+    poeRow.style.display = '';
+  } else {
+    poeRow.style.display = 'none';
+    document.getElementById('cfg-dvr-poe').value = '';
+  }
+}
+
 function cfgUpdateSummary() {
   const camRes = document.getElementById('cfg-cam-res').value;
   const camType = document.getElementById('cfg-cam-type').value;
   const dvrType = document.getElementById('cfg-dvr-type').value;
   const dvrRes = document.getElementById('cfg-dvr-res').value;
   const dvrCh = document.getElementById('cfg-dvr-ch').value;
+  const dvrPoe = document.getElementById('cfg-dvr-poe').value;
+  const switchPorts = document.getElementById('cfg-switch-ports').value;
+  const hddCapacity = document.getElementById('cfg-hdd-capacity').value;
   const parts = [];
+
   if (camRes || camType) {
     const camParts = [];
     if (camRes) camParts.push(camRes + ' MP');
     if (camType) camParts.push(camType === 'analoge' ? 'Analoge' : 'LAN/IP');
     parts.push('<strong><i class="fa-solid fa-video me-1"></i>Kamera:</strong> ' + camParts.join(' / '));
   }
-  if (dvrType || dvrRes || dvrCh) {
+  if (dvrType || dvrRes || dvrCh || dvrPoe) {
     const dvrParts = [];
     if (dvrType) dvrParts.push(dvrType);
     if (dvrRes) dvrParts.push(dvrRes + ' MP');
     if (dvrCh) dvrParts.push(dvrCh + ' Ch');
+    if (dvrType === 'NVR' && dvrPoe) dvrParts.push(dvrPoe);
     parts.push('<strong><i class="fa-solid fa-server me-1"></i>DVR/NVR/XVR:</strong> ' + dvrParts.join(' / '));
   }
+  if (switchPorts) {
+    parts.push('<strong><i class="fa-solid fa-network-wired me-1"></i>Switch PoE:</strong> ' + switchPorts + ' Port');
+  }
+  if (hddCapacity) {
+    parts.push('<strong><i class="fa-solid fa-hard-drive me-1"></i>HDD:</strong> ' + hddCapacity);
+  }
+
   const el = document.getElementById('cfgSummary');
   if (el) el.innerHTML = parts.length ? parts.join('<br>') : 'Zgjidh opsionet më lart për të parë përmbledhjen.';
 }
 
 function resetCameraConfig() {
-  ['cfg-cam-res','cfg-cam-type','cfg-dvr-type','cfg-dvr-res','cfg-dvr-ch'].forEach(id => {
+  CFG_FIELD_IDS.forEach(id => {
     const el = document.getElementById(id);
     if (el) el.value = '';
   });
+  cfgToggleDvrPoeRow();
   cfgUpdateSummary();
 }
 
@@ -760,27 +839,44 @@ function addCameraConfigToInvoice() {
   const dvrType = document.getElementById('cfg-dvr-type').value;
   const dvrRes = document.getElementById('cfg-dvr-res').value;
   const dvrCh = document.getElementById('cfg-dvr-ch').value;
+  const dvrPoe = document.getElementById('cfg-dvr-poe').value;
+  const switchPorts = document.getElementById('cfg-switch-ports').value;
+  const hddCapacity = document.getElementById('cfg-hdd-capacity').value;
 
-  if (!camRes && !camType && !dvrType && !dvrRes && !dvrCh) {
+  if (!camRes && !camType && !dvrType && !dvrRes && !dvrCh && !switchPorts && !hddCapacity) {
     alert('Zgjidh të paktën një opsion para se të shtosh në faturë.');
     return;
   }
 
-  // Kamera → rresht artikulli (përputhet me tipin "Kamera" të addRow, me MP dhe lidhjen Analoge/LAN)
+  // Kamera → rresht artikulli (tipi "Kamera", spec: [MP, Lidhja])
   if (camRes || camType) {
     const res = camRes ? camRes + 'MP' : '';
     const extra = camType === 'analoge' ? 'Analoge' : (camType === 'lan' ? 'LAN' : '');
     const desc = ['Kamera', res, extra].filter(Boolean).join(' ');
-    addRow(desc, 1, 'copë', 0, 'Kamera', res, extra);
+    addRow(desc, 1, 'copë', 0, 'Kamera', [res, extra]);
   }
 
-  // DVR/NVR/XVR → rresht artikulli (përputhet me tipin DVR/NVR/XVR, MP dhe kanalet)
-  if (dvrType || dvrRes || dvrCh) {
+  // DVR/XVR/NVR → rresht artikulli (spec: [MP, Kanalet, PoE (vetëm NVR)])
+  if (dvrType || dvrRes || dvrCh || dvrPoe) {
     const type = dvrType || 'DVR';
     const res = dvrRes ? dvrRes + 'MP' : '';
     const extra = dvrCh ? dvrCh + 'CH' : '';
-    const desc = [type, res, extra].filter(Boolean).join(' ');
-    addRow(desc, 1, 'copë', 0, type, res, extra);
+    const specs = type === 'NVR' ? [res, extra, dvrPoe] : [res, extra];
+    const desc = [type, res, extra, (type === 'NVR' ? dvrPoe : '')].filter(Boolean).join(' ');
+    addRow(desc, 1, 'copë', 0, type, specs);
+  }
+
+  // Switch PoE → rresht artikulli (spec: [Portat])
+  if (switchPorts) {
+    const ports = switchPorts + ' Port';
+    const desc = ['Switch PoE', ports].filter(Boolean).join(' ');
+    addRow(desc, 1, 'copë', 0, 'Switch PoE', [ports]);
+  }
+
+  // HDD → rresht artikulli (spec: [Kapaciteti])
+  if (hddCapacity) {
+    const desc = ['HDD', hddCapacity].filter(Boolean).join(' ');
+    addRow(desc, 1, 'copë', 0, 'HDD', [hddCapacity]);
   }
 
   calcTotals();
@@ -801,8 +897,10 @@ function addCameraConfigToInvoice() {
 }
 
 document.addEventListener('DOMContentLoaded', function() {
-  ['cfg-cam-res','cfg-cam-type','cfg-dvr-type','cfg-dvr-res','cfg-dvr-ch'].forEach(id => {
+  CFG_FIELD_IDS.forEach(id => {
     const el = document.getElementById(id);
     if (el) el.addEventListener('change', cfgUpdateSummary);
   });
+  const dvrTypeEl = document.getElementById('cfg-dvr-type');
+  if (dvrTypeEl) dvrTypeEl.addEventListener('change', cfgToggleDvrPoeRow);
 });
