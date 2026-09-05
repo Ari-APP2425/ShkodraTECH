@@ -538,3 +538,24 @@ body {
   /* Modal footer butonat — më kompakt */
   .modal-footer .btn-sm { padding: 0.3rem 0.7rem; font-size: 0.82rem; }
 }
+
+/* ── BUTONAT SHËNIM TEMPLATE ─────────────────────────────── */
+.btn-shenime-tpl {
+  padding: 2px 9px;
+  border-radius: 20px;
+  border: 1px solid currentColor;
+  background: transparent;
+  font-size: 0.7rem;
+  font-weight: 700;
+  cursor: pointer;
+  color: var(--primary);
+  transition: background .15s, color .15s;
+  line-height: 1.6;
+}
+.btn-shenime-tpl:hover,
+.btn-shenime-tpl.active { background: var(--primary); color: #fff; border-color: var(--primary); }
+.btn-shenime-clear { color: var(--muted); border-color: var(--muted); }
+.btn-shenime-clear:hover { background: var(--muted); color: #fff; border-color: var(--muted); }
+
+/* Textarea shënime — pak më e lartë */
+#shenime { font-size: 0.85rem; line-height: 1.55; resize: vertical; min-height: 110px; }
