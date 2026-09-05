@@ -275,6 +275,7 @@ async function loadFromArkiva(id) {
   document.getElementById('bleres_adresa').value = d.bleres?.adresa || '';
   document.getElementById('bleres_tel').value = d.bleres?.tel || '';
   document.getElementById('bleres_email').value = d.bleres?.email || '';
+  document.getElementById('bleres_modeli').value = d.bleres?.modeli || '';
   document.getElementById('nr_fatura').value = d.nr_fatura || '';
   document.getElementById('data_fatura').value = d.data_fatura || '';
   document.getElementById('data_skadimit').value = d.data_skadimit || '';
@@ -617,7 +618,7 @@ function collectData() {
   return {
     docType, isFature: docType==='fature',
     leshuesi:{emri:document.getElementById('leshuesi_emri').value,nipt:document.getElementById('leshuesi_nipt').value,adresa:document.getElementById('leshuesi_adresa').value,tel:document.getElementById('leshuesi_tel').value,email:document.getElementById('leshuesi_email').value,web:document.getElementById('leshuesi_web').value},
-    bleres:{emri:document.getElementById('bleres_emri').value,nipt:document.getElementById('bleres_nipt').value,adresa:document.getElementById('bleres_adresa').value,tel:document.getElementById('bleres_tel').value,email:document.getElementById('bleres_email').value},
+    bleres:{emri:document.getElementById('bleres_emri').value,nipt:document.getElementById('bleres_nipt').value,adresa:document.getElementById('bleres_adresa').value,tel:document.getElementById('bleres_tel').value,email:document.getElementById('bleres_email').value,modeli:document.getElementById('bleres_modeli')?.value||''},
     nr_fatura:document.getElementById('nr_fatura').value,
     data_fatura:document.getElementById('data_fatura').value,
     data_skadimit:document.getElementById('data_skadimit').value,
@@ -629,6 +630,19 @@ function collectData() {
     convertedSym: otherCurrencySymbol(document.getElementById('monedha').value),
     logoBase64
   };
+}
+
+// ── MODELI I PAJISJEVE (Hikvision/Dahua/...) — fushë e injektuar me JS ────
+const brandStyles = {
+  'hikvision': {bg:'#dbeafe', color:'#1e3a8a', border:'#2563eb'},
+  'dahua':     {bg:'#fef3c7', color:'#92400e', border:'#f59e0b'},
+  'uniview':   {bg:'#ede9fe', color:'#5b21b6', border:'#7c3aed'},
+  'ezviz':     {bg:'#dcfce7', color:'#065f46', border:'#16a34a'},
+  'tp-link':   {bg:'#e0f2fe', color:'#075985', border:'#0284c7'},
+};
+function getBrandStyle(name) {
+  const key = (name||'').trim().toLowerCase();
+  return brandStyles[key] || {bg:'#f1f5f9', color:'#334155', border:'#64748b'};
 }
 
 function validate(d) {
@@ -656,7 +670,7 @@ function buildPreviewHTML(d) {
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:24px">
       <div style="background:#f8fafc;border-left:4px solid ${ac};padding:12px 16px;border-radius:6px"><h6 style="font-size:0.72rem;text-transform:uppercase;letter-spacing:0.8px;color:#6b7280;margin-bottom:6px">LËSHUAR NGA</h6><p style="margin:0;font-size:0.88rem;line-height:1.6"><strong>${d.leshuesi?.emri}</strong><br>${d.leshuesi?.nipt?`NIPT: ${d.leshuesi.nipt}<br>`:''}${d.leshuesi?.adresa?d.leshuesi.adresa+'<br>':''}${d.leshuesi?.tel?d.leshuesi.tel+'<br>':''}${d.leshuesi?.email||''}</p></div>
-      <div style="background:#f8fafc;border-left:4px solid ${ac};padding:12px 16px;border-radius:6px"><h6 style="font-size:0.72rem;text-transform:uppercase;letter-spacing:0.8px;color:#6b7280;margin-bottom:6px">${d.isFature?'FATURUAR PËR':'PËRGATITUR PËR'}</h6><p style="margin:0;font-size:0.88rem;line-height:1.6"><strong>${d.bleres?.emri||'—'}</strong><br>${d.bleres?.nipt?`NIPT: ${d.bleres.nipt}<br>`:''}${d.bleres?.adresa?d.bleres.adresa+'<br>':''}${d.bleres?.tel?d.bleres.tel+'<br>':''}${d.bleres?.email||''}</p></div>
+      <div style="background:#f8fafc;border-left:4px solid ${ac};padding:12px 16px;border-radius:6px"><h6 style="font-size:0.72rem;text-transform:uppercase;letter-spacing:0.8px;color:#6b7280;margin-bottom:6px">${d.isFature?'FATURUAR PËR':'PËRGATITUR PËR'}</h6><p style="margin:0;font-size:0.88rem;line-height:1.6"><strong>${d.bleres?.emri||'—'}</strong><br>${d.bleres?.nipt?`NIPT: ${d.bleres.nipt}<br>`:''}${d.bleres?.adresa?d.bleres.adresa+'<br>':''}${d.bleres?.tel?d.bleres.tel+'<br>':''}${d.bleres?.email||''}</p>${d.bleres?.modeli?(()=>{const bs=getBrandStyle(d.bleres.modeli);return `<div style="margin-top:8px;display:inline-block;padding:3px 12px;border-radius:20px;font-size:0.78rem;font-weight:700;letter-spacing:0.3px;background:${bs.bg};color:${bs.color};border:1px solid ${bs.border}">${d.bleres.modeli}</div>`;})():''}</div>
     </div>
     <table style="width:100%;border-collapse:collapse;margin-bottom:20px">
       <thead><tr><th style="background:${hb};color:#fff;padding:8px 12px;width:35px">#</th><th style="background:${hb};color:#fff;padding:8px 12px">Përshkrimi</th><th style="background:${hb};color:#fff;padding:8px 12px;text-align:center;width:60px">Sasia</th><th style="background:${hb};color:#fff;padding:8px 12px;text-align:center;width:70px">Njësia</th><th style="background:${hb};color:#fff;padding:8px 12px;text-align:right;width:100px">Çmimi</th><th style="background:${hb};color:#fff;padding:8px 12px;text-align:right;width:110px">Totali</th></tr></thead>
