@@ -39,9 +39,12 @@ function otherCurrencySymbol(curr) {
 function fmtMoney(n) {
   n = Number(n) || 0;
   const neg = n < 0; n = Math.abs(n);
-  const parts = n.toFixed(2).split('.');
-  parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, '.');
-  return (neg ? '-' : '') + parts[0] + ',' + parts[1];
+  n = Math.round(n * 100) / 100; // rrumbullakos në qindarka
+  let [intPart, decPart] = n.toFixed(2).split('.');
+  intPart = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+  if (decPart === '00') return (neg ? '-' : '') + intPart; // pa ",00" nëse është numër i rrumbullakët
+  if (decPart.endsWith('0')) decPart = decPart.slice(0, 1); // p.sh. "50" -> "5"
+  return (neg ? '-' : '') + intPart + ',' + decPart;
 }
 
 // Injekton fushën e kursit pranë selektorit të monedhës (pa prekur HTML-in origjinal)
