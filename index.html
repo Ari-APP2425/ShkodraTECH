@@ -164,11 +164,16 @@
 
       <!-- Shënime -->
       <div class="card shadow-sm mb-3">
-        <div class="card-header section-header">
-          <i class="fa-solid fa-note-sticky me-2"></i>Shënime
+        <div class="card-header section-header d-flex align-items-center justify-content-between">
+          <span><i class="fa-solid fa-note-sticky me-2"></i>Shënime</span>
+          <div class="d-flex gap-1">
+            <button type="button" class="btn-shenime-tpl" onclick="setShenimeTemplate('ip')" title="Shënim IP">IP</button>
+            <button type="button" class="btn-shenime-tpl" onclick="setShenimeTemplate('analoge')" title="Shënim Analoge">AN</button>
+            <button type="button" class="btn-shenime-tpl btn-shenime-clear" onclick="setShenimeTemplate('clear')" title="Pastro">✕</button>
+          </div>
         </div>
         <div class="card-body">
-          <textarea id="shenime" class="form-control" rows="3" placeholder="Shënime shtesë, kushte pagese..."></textarea>
+          <textarea id="shenime" class="form-control" rows="5" placeholder="Shënime shtesë, kushte pagese..."></textarea>
         </div>
       </div>
 
@@ -394,6 +399,24 @@
   </div>
 </footer>
 
+<script>
+const SHENIME_TEMPLATES = {
+  ip: `Në vlerën e paraqitur në preventiv nuk janë përfshirë shërbimet e montimit dhe konfigurimit, si dhe materialet ndihmëse dhe aksesoret e nevojshëm për realizimin e instalimit, përfshirë kokat RJ45, kabllot LAN, kutitë e instalimit dhe materiale të tjera të ngjashme.\n\nKëto shërbime dhe materiale do të llogariten dhe do të përcaktohen veçmas, në varësi të nevojave dhe kushteve të instalimit në objekt.`,
+  analoge: `Në vlerën e paraqitur në preventiv nuk janë përfshirë shërbimet e montimit dhe konfigurimit, si dhe materialet ndihmëse dhe aksesorët e nevojshëm për realizimin e instalimit, përfshirë kabllot Coaxial, furnizuesit e energjisë, konektorët BNC/DC, kutitë e instalimit dhe materiale të tjera të ngjashme.\n\nKëto shërbime dhe materiale do të llogariten dhe do të përcaktohen veçmas, në varësi të nevojave dhe kushteve të instalimit në objekt.`
+};
+
+function setShenimeTemplate(type) {
+  const ta = document.getElementById('shenime');
+  if (type === 'clear') { ta.value = ''; }
+  else { ta.value = SHENIME_TEMPLATES[type]; }
+  ta.focus();
+  // shëno butonin aktiv
+  document.querySelectorAll('.btn-shenime-tpl').forEach(b => b.classList.remove('active'));
+  if (type !== 'clear') {
+    event.currentTarget.classList.add('active');
+  }
+}
+</script>
 <script src="app.js"></script>
 </body>
 </html>
