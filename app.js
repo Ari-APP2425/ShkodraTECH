@@ -35,6 +35,15 @@ function otherCurrencySymbol(curr) {
   return null;
 }
 
+// Formatim numrash me pikë për mijëshe dhe presje për decimale (p.sh. 200.000,00)
+function fmtMoney(n) {
+  n = Number(n) || 0;
+  const neg = n < 0; n = Math.abs(n);
+  const parts = n.toFixed(2).split('.');
+  parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+  return (neg ? '-' : '') + parts[0] + ',' + parts[1];
+}
+
 // Injekton fushën e kursit pranë selektorit të monedhës (pa prekur HTML-in origjinal)
 function injectKursiUI() {
   if (document.getElementById('kursiInput')) return; // tashmë ekziston
@@ -221,7 +230,7 @@ async function renderArkiva() {
         </div>
       </div>
       <div class="text-end">
-        <div class="arkiva-total">${inv.sym||'L'} ${(inv.total||0).toFixed(2)}</div>
+        <div class="arkiva-total">${inv.sym||'L'} ${fmtMoney(inv.total||0)}</div>
         <div class="arkiva-date">${inv.data_fatura||'—'}</div>
         <div class="arkiva-date text-muted" style="font-size:0.72rem">Ruajtur: ${new Date(inv.savedAt).toLocaleDateString('sq-AL')}</div>
       </div>
@@ -496,7 +505,7 @@ function calcRowTotal(id) {
   const q=parseFloat(document.getElementById('qty-'+id)?.value)||0;
   const p=parseFloat(document.getElementById('price-'+id)?.value)||0;
   const el=document.getElementById('rowtotal-'+id);
-  if(el) el.textContent=currSymbol+' '+(q*p).toFixed(2);
+  if(el) el.textContent=currSymbol+' '+fmtMoney(q*p);
 }
 function calcTotals() {
   let sub=0;
@@ -512,10 +521,10 @@ function calcTotals() {
   const tvshRate=parseFloat(document.getElementById('tvsh_norma').value)||20;
   const tvshVal=tvshOn?afterDisc*tvshRate/100:0;
   const total=afterDisc+tvshVal;
-  document.getElementById('displayNentotali').textContent=currSymbol+' '+sub.toFixed(2);
-  document.getElementById('displayZbritje').textContent='- '+currSymbol+' '+discVal.toFixed(2);
-  document.getElementById('displayTvsh').textContent=currSymbol+' '+tvshVal.toFixed(2);
-  document.getElementById('displayTotal').textContent=currSymbol+' '+total.toFixed(2);
+  document.getElementById('displayNentotali').textContent=currSymbol+' '+fmtMoney(sub);
+  document.getElementById('displayZbritje').textContent='- '+currSymbol+' '+fmtMoney(discVal);
+  document.getElementById('displayTvsh').textContent=currSymbol+' '+fmtMoney(tvshVal);
+  document.getElementById('displayTotal').textContent=currSymbol+' '+fmtMoney(total);
   document.getElementById('tvshPct').textContent=tvshRate;
   document.getElementById('zbritjeRow').classList.toggle('d-none', discVal<=0);
 
@@ -532,7 +541,7 @@ function calcTotals() {
     eqEl.style.marginTop = '2px';
     document.getElementById('displayTotal').parentElement?.insertAdjacentElement('afterend', eqEl);
   }
-  eqEl.textContent = converted !== null ? '≈ ' + otherCurrencySymbol(monedha) + ' ' + converted.toFixed(2) : '';
+  eqEl.textContent = converted !== null ? otherCurrencySymbol(monedha) + ' ' + fmtMoney(converted) : '';
 }
 
 function collectData() {
@@ -581,9 +590,20 @@ function buildPreviewHTML(d) {
   const hb=d.isFature?'#1e3a5f':'#065f46';
   const lbl=d.isFature?'FATURË':'PREVENTIV';
   const savedLogoHtml=d.logoBase64?`<div><img src="${d.logoBase64}" style="max-height:90px;max-width:260px;object-fit:contain"></div>`:`<div style="font-size:1.4rem;font-weight:800;color:${hb}">${d.leshuesi?.emri||''}</div>`;
-  const rowsHtml=(d.rows||[]).filter(r=>r.desc||r.total>0).map((r,i)=>`<tr><td>${i+1}</td><td>${r.desc||'—'}</td><td style="text-align:center">${r.qty}</td><td style="text-align:center">${r.unit||'—'}</td><td style="text-align:right">${d.sym} ${r.price.toFixed(2)}</td><td style="text-align:right"><strong>${d.sym} ${r.total.toFixed(2)}</strong></td></tr>`).join('');
-  const eqHtml = (d.convertedTotal!=null) ? `<div style="display:flex;justify-content:flex-end;font-size:0.82rem;color:#6b7280;margin-top:2px"><span>≈ ${d.convertedSym} ${d.convertedTotal.toFixed(2)} (kursi 1€ = ${d.exchangeRate} L)</span></div>` : '';
-  const totHtml=`<div style="display:flex;justify-content:space-between;padding:4px 0"><span>Nëntotali</span><span>${d.sym} ${d.sub.toFixed(2)}</span></div>${d.discVal>0?`<div style="display:flex;justify-content:space-between;padding:4px 0;color:#e02424"><span>Zbritje (${d.disc}%)</span><span>- ${d.sym} ${d.discVal.toFixed(2)}</span></div>`:''}${d.tvshOn?`<div style="display:flex;justify-content:space-between;padding:4px 0"><span>TVSH (${d.tvshRate}%)</span><span>${d.sym} ${d.tvshVal.toFixed(2)}</span></div>`:''}<div style="display:flex;justify-content:space-between;border-top:2px solid ${ac};margin-top:6px;padding-top:8px;font-weight:800;font-size:1.1rem;color:${ac}"><span>TOTALI</span><span>${d.sym} ${d.total.toFixed(2)}</span></div>${eqHtml}`;
+  const rowConv = (amount) => {
+    if (d.monedha === 'ALL') return amount / (d.exchangeRate || 95);
+    if (d.monedha === 'EUR') return amount * (d.exchangeRate || 95);
+    return null;
+  };
+  const rowsHtml=(d.rows||[]).filter(r=>r.desc||r.total>0).map((r,i)=>{
+    const convPrice = rowConv(r.price);
+    const convTotal = rowConv(r.total);
+    const eqPriceHtml = convPrice!=null ? `<div style="font-size:0.72rem;color:#9ca3af">${d.convertedSym} ${fmtMoney(convPrice)}</div>` : '';
+    const eqTotalHtml = convTotal!=null ? `<div style="font-size:0.72rem;color:#9ca3af;font-weight:400">${d.convertedSym} ${fmtMoney(convTotal)}</div>` : '';
+    return `<tr><td>${i+1}</td><td>${r.desc||'—'}</td><td style="text-align:center">${r.qty}</td><td style="text-align:center">${r.unit||'—'}</td><td style="text-align:right">${d.sym} ${fmtMoney(r.price)}${eqPriceHtml}</td><td style="text-align:right"><strong>${d.sym} ${fmtMoney(r.total)}</strong>${eqTotalHtml}</td></tr>`;
+  }).join('');
+  const eqHtml = (d.convertedTotal!=null) ? `<div style="display:flex;justify-content:space-between;margin-top:4px;font-weight:700;font-size:0.95rem;color:${ac}"><span>TOTALI (${d.convertedSym})</span><span>${d.convertedSym} ${fmtMoney(d.convertedTotal)}</span></div>` : '';
+  const totHtml=`<div style="display:flex;justify-content:space-between;padding:4px 0"><span>Nëntotali</span><span>${d.sym} ${fmtMoney(d.sub)}</span></div>${d.discVal>0?`<div style="display:flex;justify-content:space-between;padding:4px 0;color:#e02424"><span>Zbritje (${d.disc}%)</span><span>- ${d.sym} ${fmtMoney(d.discVal)}</span></div>`:''}${d.tvshOn?`<div style="display:flex;justify-content:space-between;padding:4px 0"><span>TVSH (${d.tvshRate}%)</span><span>${d.sym} ${fmtMoney(d.tvshVal)}</span></div>`:''}<div style="display:flex;justify-content:space-between;border-top:2px solid ${ac};margin-top:6px;padding-top:8px;font-weight:800;font-size:1.1rem;color:${ac}"><span>TOTALI</span><span>${d.sym} ${fmtMoney(d.total)}</span></div>${eqHtml}`;
   return `
     <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:30px">
       ${savedLogoHtml}
