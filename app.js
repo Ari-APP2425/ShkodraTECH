@@ -477,8 +477,9 @@ const CAMERA_CONN = ['Analoge','LAN','Wifi'];
 const CHANNELS = ['4CH','8CH','16CH','32CH'];
 const HDD_SIZES = ['500GB','1TB','2TB','3TB','4TB','5TB','6TB','8TB','12TB'];
 const CABLE_TYPES = ['Coax','LAN'];
+const CONNECTOR_TYPES = ['RJ45','BNC','DC'];
 
-function addRow(desc='',qty=1,unit='',price=0,type='Kamera',res='',extra='',marka='',conn='') {
+function addRow(desc='',qty=1,unit='',price=0,type='Kamera',res='',extra='',marka='') {
   rowCounter++;
   const id=rowCounter;
   const unitOpts=UNITS.map(u=>`<option value="${u}" ${u===unit?'selected':''}>${u||'—'}</option>`).join('');
@@ -491,6 +492,7 @@ function addRow(desc='',qty=1,unit='',price=0,type='Kamera',res='',extra='',mark
           <option value="NVR" ${type==='NVR'?'selected':''}>NVR</option>
           <option value="XVR" ${type==='XVR'?'selected':''}>XVR</option>
           <option value="HDD" ${type==='HDD'?'selected':''}>HDD</option>
+          <option value="Koka" ${type==='Koka'?'selected':''}>Koka</option>
           <option value="Cavo" ${type==='Cavo'?'selected':''}>Cavo</option>
           <option value="Tjeter" ${type==='Tjeter'?'selected':''}>Tjetër (Emërtim i lirë)</option>
         </select>
@@ -499,12 +501,6 @@ function addRow(desc='',qty=1,unit='',price=0,type='Kamera',res='',extra='',mark
         </select>
         <select id="extra-${id}" class="form-select form-select-sm" onchange="updateSpec(${id})"></select>
         <input type="text" id="marka-${id}" class="form-control form-control-sm" list="markaSuggestions" placeholder="Marka (p.sh. Hikvision, Dahua...)" value="${marka}" oninput="updateSpec(${id})">
-        <select id="conn-${id}" class="form-select form-select-sm" onchange="updateSpec(${id})">
-          <option value="">Konektori...</option>
-          <option value="RJ45" ${conn==='RJ45'?'selected':''}>RJ45</option>
-          <option value="BNC" ${conn==='BNC'?'selected':''}>BNC</option>
-          <option value="DC" ${conn==='DC'?'selected':''}>DC</option>
-        </select>
       </div>
       <button type="button" class="btn btn-sm btn-outline-danger flex-shrink-0" onclick="removeRow(${id})"><i class="fa-solid fa-xmark"></i></button>
     </div>
@@ -535,9 +531,12 @@ function addRow(desc='',qty=1,unit='',price=0,type='Kamera',res='',extra='',mark
 }
 
 function buildResOptions(type,res) {
-  // Zgjedh listën e opsioneve për selektorin e dytë (MP / Kapaciteti HDD) sipas tipit
+  // Zgjedh listën e opsioneve për selektorin e dytë (MP / Kapaciteti HDD / Konektori) sipas tipit
   if (type==='HDD') {
     return `<option value="">Kapaciteti...</option>` + HDD_SIZES.map(s=>`<option value="${s}" ${s===res?'selected':''}>${s}</option>`).join('');
+  }
+  if (type==='Koka') {
+    return `<option value="">Konektori...</option>` + CONNECTOR_TYPES.map(c=>`<option value="${c}" ${c===res?'selected':''}>${c}</option>`).join('');
   }
   if (type==='Kuti' || type==='Cavo' || type==='Tjeter') {
     return `<option value="">—</option>`;
@@ -584,11 +583,9 @@ function updateSpec(id) {
   const extra=document.getElementById('extra-'+id).value;
   const markaInput=document.getElementById('marka-'+id);
   const marka=markaInput?markaInput.value.trim():'';
-  const connSelect=document.getElementById('conn-'+id);
-  const conn=connSelect?connSelect.value:'';
   const descInput=document.getElementById('desc-'+id);
-  if(res||extra||marka||conn) {
-    descInput.value=[type,marka,res,extra,conn].filter(Boolean).join(' ');
+  if(res||extra||marka) {
+    descInput.value=[type,marka,res,extra].filter(Boolean).join(' ');
     calcTotals();
   }
 }
