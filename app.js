@@ -478,7 +478,7 @@ const CHANNELS = ['4CH','8CH','16CH','32CH'];
 const HDD_SIZES = ['500GB','1TB','2TB','3TB','4TB','5TB','6TB','8TB','12TB'];
 const CABLE_TYPES = ['Coax','LAN'];
 
-function addRow(desc='',qty=1,unit='',price=0,type='Kamera',res='',extra='',marka='') {
+function addRow(desc='',qty=1,unit='',price=0,type='Kamera',res='',extra='',marka='',conn='') {
   rowCounter++;
   const id=rowCounter;
   const unitOpts=UNITS.map(u=>`<option value="${u}" ${u===unit?'selected':''}>${u||'—'}</option>`).join('');
@@ -491,7 +491,6 @@ function addRow(desc='',qty=1,unit='',price=0,type='Kamera',res='',extra='',mark
           <option value="NVR" ${type==='NVR'?'selected':''}>NVR</option>
           <option value="XVR" ${type==='XVR'?'selected':''}>XVR</option>
           <option value="HDD" ${type==='HDD'?'selected':''}>HDD</option>
-          <option value="Kuti" ${type==='Kuti'?'selected':''}>Kuti (vetë)</option>
           <option value="Cavo" ${type==='Cavo'?'selected':''}>Cavo</option>
           <option value="Tjeter" ${type==='Tjeter'?'selected':''}>Tjetër (Emërtim i lirë)</option>
         </select>
@@ -500,6 +499,12 @@ function addRow(desc='',qty=1,unit='',price=0,type='Kamera',res='',extra='',mark
         </select>
         <select id="extra-${id}" class="form-select form-select-sm" onchange="updateSpec(${id})"></select>
         <input type="text" id="marka-${id}" class="form-control form-control-sm" list="markaSuggestions" placeholder="Marka (p.sh. Hikvision, Dahua...)" value="${marka}" oninput="updateSpec(${id})">
+        <select id="conn-${id}" class="form-select form-select-sm" onchange="updateSpec(${id})">
+          <option value="">Konektori...</option>
+          <option value="RJ45" ${conn==='RJ45'?'selected':''}>RJ45</option>
+          <option value="BNC" ${conn==='BNC'?'selected':''}>BNC</option>
+          <option value="DC" ${conn==='DC'?'selected':''}>DC</option>
+        </select>
       </div>
       <button type="button" class="btn btn-sm btn-outline-danger flex-shrink-0" onclick="removeRow(${id})"><i class="fa-solid fa-xmark"></i></button>
     </div>
@@ -579,9 +584,11 @@ function updateSpec(id) {
   const extra=document.getElementById('extra-'+id).value;
   const markaInput=document.getElementById('marka-'+id);
   const marka=markaInput?markaInput.value.trim():'';
+  const connSelect=document.getElementById('conn-'+id);
+  const conn=connSelect?connSelect.value:'';
   const descInput=document.getElementById('desc-'+id);
-  if(res||extra||marka) {
-    descInput.value=[type,marka,res,extra].filter(Boolean).join(' ');
+  if(res||extra||marka||conn) {
+    descInput.value=[type,marka,res,extra,conn].filter(Boolean).join(' ');
     calcTotals();
   }
 }
