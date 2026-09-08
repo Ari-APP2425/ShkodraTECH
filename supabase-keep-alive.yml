@@ -1,0 +1,18 @@
+name: Supabase Keep-Alive
+
+on:
+  schedule:
+    # Ekzekutohet çdo 3 ditë, në orën 06:00 UTC
+    - cron: '0 6 */3 * *'
+  workflow_dispatch: {}   # lejon ta nisësh dorazi nga tab-i "Actions" për test
+
+jobs:
+  ping-supabase:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping tabelën invoices
+        run: |
+          curl -s -o /dev/null -w "HTTP status: %{http_code}\n" \
+            "https://dkskomqdhcxcdaipdqop.supabase.co/rest/v1/invoices?select=id&limit=1" \
+            -H "apikey: ${{ secrets.SUPABASE_ANON_KEY }}" \
+            -H "Authorization: Bearer ${{ secrets.SUPABASE_ANON_KEY }}"
