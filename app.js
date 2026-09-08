@@ -409,10 +409,11 @@ function injectEmertimSuggestions() {
     const dl = document.createElement('datalist');
     dl.id = 'emertimSuggestions';
     const sugjerime = [
-      'Kamera Hikvision','Kamera Dahua','Kamera Imou','Kamera Ezviz',
+      'Kamera Hikvision','Kamera Dahua','Kamera Imou','Kamera Ezviz','Kamera Longse','Kamera Craftsman',
       'Sistem Alarmi','Sensor Lëvizjeje','Sirenë Alarmi','Panel Alarmi',
-      'DVR Hikvision','DVR Dahua','NVR Hikvision','NVR Dahua',
-      'Ushqyes (Power Supply)','Konektor BNC','Switch POE','Router',
+      'DVR Hikvision','DVR Dahua','DVR Longse','NVR Hikvision','NVR Dahua','NVR Longse',
+      'HDD Seagate','HDD Western Digital','HDD Toshiba',
+      'Ushqyes (Power Supply)','Konektor BNC','Switch 8 Port PoE','Switch 16 Port PoE','Router',
       'Instalim dhe Konfigurim','Mirëmbajtje Sistemi'
     ];
     dl.innerHTML = sugjerime.map(s=>`<option value="${s}"></option>`).join('');
@@ -421,7 +422,8 @@ function injectEmertimSuggestions() {
   if (!document.getElementById('markaSuggestions')) {
     const dlm = document.createElement('datalist');
     dlm.id = 'markaSuggestions';
-    const markat = ['Hikvision','Dahua','Imou','Ezviz','TP-Link','Ajax','DSC','Paradox','Uniview','Reolink'];
+    const markat = ['Hikvision','Dahua','Imou','Ezviz','TP-Link','Ajax','DSC','Paradox','Uniview','Reolink',
+      'Longse','Craftsman','CP Plus','Provision-ISR','Space Technology','Safer','Ctronics','Xmeye','Zosi','Tenda'];
     dlm.innerHTML = markat.map(s=>`<option value="${s}"></option>`).join('');
     document.body.appendChild(dlm);
   }
@@ -478,6 +480,8 @@ const CHANNELS = ['4CH','8CH','16CH','32CH'];
 const HDD_SIZES = ['500GB','1TB','2TB','3TB','4TB','5TB','6TB','8TB','12TB'];
 const CABLE_TYPES = ['Coax','LAN'];
 const CONNECTOR_TYPES = ['RJ45','BNC','DC'];
+const SWITCH_PORTS = ['4 Port','8 Port','16 Port','24 Port','32 Port'];
+const POE_OPTIONS = ['PoE','Jo PoE'];
 
 function addRow(desc='',qty=1,unit='',price=0,type='Kamera',res='',extra='',marka='') {
   rowCounter++;
@@ -492,6 +496,7 @@ function addRow(desc='',qty=1,unit='',price=0,type='Kamera',res='',extra='',mark
           <option value="NVR" ${type==='NVR'?'selected':''}>NVR</option>
           <option value="XVR" ${type==='XVR'?'selected':''}>XVR</option>
           <option value="HDD" ${type==='HDD'?'selected':''}>HDD</option>
+          <option value="Switch" ${type==='Switch'?'selected':''}>Switch</option>
           <option value="Koka" ${type==='Koka'?'selected':''}>Koka</option>
           <option value="Cavo" ${type==='Cavo'?'selected':''}>Cavo</option>
           <option value="Tjeter" ${type==='Tjeter'?'selected':''}>Tjetër (Emërtim i lirë)</option>
@@ -535,6 +540,9 @@ function buildResOptions(type,res) {
   if (type==='HDD') {
     return `<option value="">Kapaciteti...</option>` + HDD_SIZES.map(s=>`<option value="${s}" ${s===res?'selected':''}>${s}</option>`).join('');
   }
+  if (type==='Switch') {
+    return `<option value="">Portat...</option>` + SWITCH_PORTS.map(s=>`<option value="${s}" ${s===res?'selected':''}>${s}</option>`).join('');
+  }
   if (type==='Koka') {
     return `<option value="">Konektori...</option>` + CONNECTOR_TYPES.map(c=>`<option value="${c}" ${c===res?'selected':''}>${c}</option>`).join('');
   }
@@ -559,6 +567,8 @@ function populateExtraOptions(id,type) {
     extraSelect.innerHTML=`<option value="">Kanalet...</option>`+CHANNELS.map(o=>`<option value="${o}">${o}</option>`).join('');
   } else if (type==='Cavo') {
     extraSelect.innerHTML=`<option value="">Lloji...</option>`+CABLE_TYPES.map(o=>`<option value="${o}">${o}</option>`).join('');
+  } else if (type==='Switch') {
+    extraSelect.innerHTML=`<option value="">PoE apo Jo...</option>`+POE_OPTIONS.map(o=>`<option value="${o}">${o}</option>`).join('');
   } else {
     // HDD, Kuti dhe Tjetër nuk kanë nevojë për fushën shtesë
     extraSelect.innerHTML=`<option value="">—</option>`;
