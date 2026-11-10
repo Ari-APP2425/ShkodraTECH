@@ -13,7 +13,7 @@
   const SITE_CURRENCY = 'EUR';          // monedha e çmimeve në shkodratech.al: 'EUR' ose 'ALL'
   const CACHE_KEY = 'shkodra_products_cache_v2';
   const SYM = { ALL: 'L', EUR: '€', USD: '$' };
-  const MAX_RESULTS = 80;
+  const MAX_RESULTS = 1000;
   const FB_VER = '10.12.2';
   const BASE = 'https://firestore.googleapis.com/v1/projects/' + PROJECT_ID +
                '/databases/(default)/documents/' + COLLECTION;
@@ -22,6 +22,7 @@
   let liveState = 'offline';            // 'live' | 'polling' | 'offline' | 'loading'
   let lastError = '';
   let lastFetch = 0;
+  let lastStats = null;
 
   // ── Firestore REST -> objekt JS (fallback) ────────────────────────────
   function parseValue(v) {
@@ -77,7 +78,7 @@
     return isFinite(n) ? n : 0;
   }
   function normalize(p) {
-    const name = String(pick(p, ['name', 'title', 'emri', 'emertimi', 'productName'])).trim();
+    const name = String(pick(p, ['name', 'title', 'emri', 'emertimi', 'productName', 'name_sq', 'nameSq', 'name_al', 'nameAl', 'titulli', 'emertim', 'label', 'product_name'])).trim();
     const category = String(pick(p, ['category', 'kategoria', 'cat'])).trim();
     return {
       id: p.id,
@@ -86,7 +87,7 @@
       price: toNum(pick(p, ['price', 'cmimi', 'çmimi', 'salePrice', 'priceEur', 'price_eur'])),
       currency: String(pick(p, ['currency', 'monedha']) || SITE_CURRENCY).toUpperCase(),
       hidden: p.hidden === true || p.active === false || p.visible === false,
-      hay: (name + ' ' + category).toLowerCase()
+      hay: [name, category, pick(p, ['brand', 'marka', 'model', 'sku', 'code', 'kodi', 'subcategory', 'nenkategoria'])].join(' ').toLowerCase()
     };
   }
   function esc(s) {
@@ -105,7 +106,10 @@
 
   // ── Marrja e listës (live ose fallback) ───────────────────────────────
   function setProducts(rawList) {
-    const list = rawList.map(normalize).filter(p => p.name && !p.hidden);
+    const all = rawList.map(normalize);
+    const list = all.filter(p => p.name && !p.hidden);
+    lastStats = { total: all.length, noName: all.filter(p => !p.name).length, hidden: all.filter(p => p.name && p.hidden).length };
+    try { console.log('shkodra-products:', lastStats, 'fushat e produktit të parë:', Object.keys(rawList[0] || {})); } catch (e) {}
     list.sort((a, b) => a.name.localeCompare(b.name));
     PRODUCTS = list;
     lastFetch = Date.now();
@@ -259,6 +263,10 @@
       if (e.key === 'Escape' && modal.style.display === 'block') closeModal();
     });
   }
+  function statsText() {
+    if (!lastStats) return '';
+    return ' · DB: ' + lastStats.total + (lastStats.hidden ? ', të fshehura: ' + lastStats.hidden : '') + (lastStats.noName ? ', pa emër: ' + lastStats.noName : '');
+  }
   function statusText() {
     if (liveState === 'live') return '🟢 live';
     if (liveState === 'polling') return '🟠 rifreskim';
@@ -279,7 +287,7 @@
     matches = all.slice(0, MAX_RESULTS);
     count.textContent = (all.length > MAX_RESULTS
       ? 'Po shfaqen ' + MAX_RESULTS + ' nga ' + all.length + ' — shkruaj më shumë'
-      : all.length + ' produkte') + '  ·  ' + statusText();
+      : all.length + ' produkte') + '  ·  ' + statusText() + statsText();
     list.innerHTML = matches.length ? matches.map((p, i) =>
       '<div data-i="' + i + '">' +
         '<div style="flex:1;min-width:0;">' +
