@@ -1,6 +1,12 @@
-// shkodra-products.js (v2)
-// Lidh aplikacionin e faturave/preventivave me produktet e shkodratech.al (Firestore, vetëm lexim).
+// shkodra-products.js (v3)
+// Produktet e shkodratech.al (Firestore, vetëm lexim) brenda aplikacionit të faturave/preventivave.
 // Ngarkoje në index.html PAS app.js:  <script src="shkodra-products.js"></script>
+//
+// Çfarë ka të re në v3:
+//  • Buton i vogël rrumbullak poshtë djathtas (🔍) — kur e klikon hapet kërkimi në ekran të plotë.
+//  • Kliko produktin => shtohet menjëherë si rresht i ri (ose rritet sasia nëse ekziston). Dritarja mbetet hapur.
+//  • Përditësim LIVE: sa herë shtohet/hiqet/ndryshon një produkt në shkodratech.al, lista përditësohet vetë.
+//    (përdor Firestore realtime; nëse s'ngarkohet, kalon automatikisht në rifreskim kur hap aplikacionin/dritaren)
 (function () {
   const PROJECT_ID = 'shkodratech-ec8c0';
   const COLLECTION = 'products';
@@ -8,12 +14,16 @@
   const CACHE_KEY = 'shkodra_products_cache_v2';
   const SYM = { ALL: 'L', EUR: '€', USD: '$' };
   const MAX_RESULTS = 80;
+  const FB_VER = '10.12.2';
   const BASE = 'https://firestore.googleapis.com/v1/projects/' + PROJECT_ID +
                '/databases/(default)/documents/' + COLLECTION;
 
   let PRODUCTS = [];
+  let liveState = 'offline';            // 'live' | 'polling' | 'offline' | 'loading'
+  let lastError = '';
+  let lastFetch = 0;
 
-  // ── Firestore REST -> objekt JS ───────────────────────────────────────
+  // ── Firestore REST -> objekt JS (fallback) ────────────────────────────
   function parseValue(v) {
     if (!v) return null;
     if ('stringValue' in v) return v.stringValue;
@@ -51,7 +61,7 @@
     return out;
   }
 
-  // ── Normalizim (toleron emra të ndryshëm fushash) ─────────────────────
+  // ── Normalizim ────────────────────────────────────────────────────────
   function pick(o, keys) {
     for (const k of keys) {
       if (o[k] !== undefined && o[k] !== null && o[k] !== '') return o[k];
@@ -85,8 +95,6 @@
   function priceText(p) {
     return p.price > 0 ? (p.price + ' ' + (SYM[p.currency] || p.currency)) : 'pa çmim';
   }
-
-  // ── Çmimi sipas monedhës së dokumentit ────────────────────────────────
   function priceFor(p) {
     const to = document.getElementById('monedha').value;       // ALL / EUR / USD
     let v = p.price;
@@ -95,14 +103,138 @@
     return Math.round(v * 100) / 100;
   }
 
-  // ── Dritarja e kërkimit (ekran i plotë) ───────────────────────────────
-  let modal = null, targetRow = null, matches = [];
+  // ── Marrja e listës (live ose fallback) ───────────────────────────────
+  function setProducts(rawList) {
+    const list = rawList.map(normalize).filter(p => p.name && !p.hidden);
+    list.sort((a, b) => a.name.localeCompare(b.name));
+    PRODUCTS = list;
+    lastFetch = Date.now();
+    lastError = '';
+    try { localStorage.setItem(CACHE_KEY, JSON.stringify(PRODUCTS)); } catch (e) {}
+    refreshUI();
+  }
+  function refreshUI() {
+    if (modal && modal.style.display === 'block') {
+      renderResults(document.getElementById('shkodraQ').value);
+    }
+    updateFabBadge();
+  }
+
+  async function refreshREST(force) {
+    if (!force && Date.now() - lastFetch < 60000) return;   // mos e ngarko më shpesh se 1 min
+    try {
+      const raw = await fetchAll();
+      if (!raw.length) throw new Error('asnjë produkt');
+      if (liveState !== 'live') liveState = 'polling';
+      setProducts(raw);
+    } catch (e) {
+      console.error('shkodra-products:', e);
+      lastError = e.message;
+      if (liveState !== 'live') liveState = PRODUCTS.length ? 'offline' : 'offline';
+      refreshUI();
+    }
+  }
+
+  function loadScript(src) {
+    return new Promise((resolve, reject) => {
+      const s = document.createElement('script');
+      s.src = src; s.onload = resolve; s.onerror = () => reject(new Error('script ' + src));
+      document.head.appendChild(s);
+    });
+  }
+  async function startLive() {
+    try {
+      await loadScript('https://www.gstatic.com/firebasejs/' + FB_VER + '/firebase-app-compat.js');
+      await loadScript('https://www.gstatic.com/firebasejs/' + FB_VER + '/firebase-firestore-compat.js');
+      const app = firebase.apps.length ? firebase.app() : firebase.initializeApp({ projectId: PROJECT_ID });
+      const db = firebase.firestore(app);
+      try { db.settings({ experimentalAutoDetectLongPolling: true, merge: true }); } catch (e) {}
+      db.collection(COLLECTION).onSnapshot(snap => {
+        const raw = [];
+        snap.forEach(d => raw.push(Object.assign({ id: d.id }, d.data())));
+        if (!raw.length) return;
+        liveState = 'live';
+        setProducts(raw);
+      }, err => {
+        console.error('shkodra-products live:', err);
+        liveState = 'polling';
+        refreshREST(true);
+      });
+    } catch (e) {
+      console.error('shkodra-products: live nuk u nis, përdoret rifreskimi', e);
+      liveState = 'polling';
+      refreshREST(true);
+    }
+  }
+
+  // ── Stilet ────────────────────────────────────────────────────────────
+  function injectStyle() {
+    if (document.getElementById('shkodraStyle')) return;
+    const st = document.createElement('style');
+    st.id = 'shkodraStyle';
+    st.textContent =
+      '#shkodraFab{position:relative;flex:0 0 auto;height:40px;min-width:40px;width:40px;border-radius:20px;border:0;'+
+        'background:#1e3a5f;color:#fff;font-size:17px;display:flex;align-items:center;justify-content:center;gap:8px;'+
+        'box-shadow:0 2px 8px rgba(0,0,0,.25);cursor:pointer;overflow:hidden;white-space:nowrap;padding:0}'+
+      '#shkodraFab .lbl{display:none;font-size:14px;font-weight:600}'+
+      '#shkodraFab .dot{position:absolute;top:5px;right:5px;width:9px;height:9px;border-radius:50%;border:2px solid #1e3a5f;background:#9ca3af}'+
+      '#shkodraFab.live .dot{background:#22c55e}'+
+      '#shkodraFab.polling .dot{background:#f59e0b}'+
+      '#shkodraFab.wide{flex:1 1 auto;width:auto;padding:0 16px;justify-content:flex-start;animation:shkodraWide .22s ease-out}'+
+      '#shkodraFab.wide .lbl{display:inline}'+
+      '@keyframes shkodraWide{from{max-width:40px}to{max-width:100%}}'+
+      '#shkodraModal{display:none;position:fixed;inset:0;z-index:5000;background:#fff;color:#111;' +
+        'transform-origin:50% 100%;}' +
+      '#shkodraModal.open{animation:shkodraOpen .25s ease-out}' +
+      '@keyframes shkodraOpen{from{transform:scale(.08);opacity:0;border-radius:50%}to{transform:scale(1);opacity:1;border-radius:0}}' +
+      '#shkodraList [data-i]{padding:10px 12px;border-bottom:1px solid #eee;display:flex;align-items:center;gap:10px}' +
+      '#shkodraList [data-i]:active{background:#eef6ff}' +
+      '#shkodraList .plus{flex:0 0 auto;width:30px;height:30px;border-radius:50%;background:#e8f0fe;color:#1e3a5f;' +
+        'display:flex;align-items:center;justify-content:center;font-weight:700}' +
+      '#shkodraToast{position:absolute;left:50%;bottom:24px;transform:translateX(-50%);background:#111;color:#fff;' +
+        'padding:8px 16px;border-radius:20px;font-size:14px;opacity:0;transition:opacity .2s;pointer-events:none;max-width:90%}' +
+      '#shkodraToast.show{opacity:.92}';
+    document.head.appendChild(st);
+  }
+
+  // ── Lupa e rrumbullakët (në fund të listës së artikujve) ──────────────
+  let fab = null, addBtn = null;
+  function buildFab() {
+    if (fab) return;
+    addBtn = document.querySelector('button[onclick="addRow()"]');
+    const host = addBtn ? addBtn.parentNode : document.getElementById('itemsBody');
+    if (!host) return;
+    host.style.display = 'flex';
+    host.style.gap = '8px';
+    host.style.alignItems = 'center';
+    if (addBtn) addBtn.style.flex = '1 1 auto';
+    fab = document.createElement('button');
+    fab.id = 'shkodraFab';
+    fab.type = 'button';
+    fab.title = 'Kërko produkt nga shkodratech.al';
+    fab.innerHTML = '<i class="fa-solid fa-magnifying-glass"></i><span class="lbl">Kërko produkt nga shkodratech.al</span><span class="dot"></span>';
+    fab.addEventListener('click', openModal);
+    host.appendChild(fab);
+    updateFabBadge();
+  }
+  function updateFabBadge() {
+    if (!fab) return;
+    fab.classList.toggle('live', liveState === 'live');
+    fab.classList.toggle('polling', liveState === 'polling');
+  }
+  function setFabWide(wide) {
+    if (!fab) return;
+    fab.classList.toggle('wide', wide);
+    if (addBtn) addBtn.style.display = wide ? 'none' : '';
+  }
+
+  // ── Dritarja e kërkimit ───────────────────────────────────────────────
+  let modal = null, matches = [], toastTimer = null;
 
   function buildModal() {
     if (modal) return;
     modal = document.createElement('div');
     modal.id = 'shkodraModal';
-    modal.style.cssText = 'display:none;position:fixed;top:0;left:0;right:0;bottom:0;z-index:5000;background:#fff;color:#111;';
     modal.innerHTML =
       '<div style="display:flex;flex-direction:column;height:100%;">' +
         '<div style="display:flex;gap:8px;padding:10px;border-bottom:1px solid #ddd;background:#f8f9fa;">' +
@@ -112,7 +244,8 @@
         '</div>' +
         '<div id="shkodraCount" style="padding:6px 12px;font-size:12px;color:#666;"></div>' +
         '<div id="shkodraList" style="flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;"></div>' +
-      '</div>';
+      '</div>' +
+      '<div id="shkodraToast"></div>';
     document.body.appendChild(modal);
     document.getElementById('shkodraQ').addEventListener('input', e => renderResults(e.target.value));
     document.getElementById('shkodraX').addEventListener('click', closeModal);
@@ -120,113 +253,135 @@
       const el = e.target.closest('[data-i]');
       if (!el) return;
       const p = matches[parseInt(el.getAttribute('data-i'), 10)];
-      if (p && targetRow !== null) applyProduct(targetRow, p);
-      closeModal();
+      if (p) addProduct(p);
     });
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Escape' && modal.style.display === 'block') closeModal();
+    });
+  }
+  function statusText() {
+    if (liveState === 'live') return '🟢 live';
+    if (liveState === 'polling') return '🟠 rifreskim';
+    return PRODUCTS.length ? '⚪ offline (të ruajtura)' : '⚠ ' + (lastError || 'pa lidhje');
   }
   function renderResults(q) {
     const list = document.getElementById('shkodraList');
     const count = document.getElementById('shkodraCount');
     if (!PRODUCTS.length) {
       matches = [];
-      list.innerHTML = '<div style="padding:16px;color:#666;">Produktet po ngarkohen...</div>';
+      list.innerHTML = '<div style="padding:16px;color:#666;">' +
+        (lastError ? 'Produktet nuk u ngarkuan (' + esc(lastError) + ')' : 'Produktet po ngarkohen...') + '</div>';
       count.textContent = '';
       return;
     }
     const words = (q || '').toLowerCase().split(/\s+/).filter(Boolean);
     const all = PRODUCTS.filter(p => words.every(w => p.hay.indexOf(w) !== -1));
     matches = all.slice(0, MAX_RESULTS);
-    count.textContent = all.length > MAX_RESULTS
-      ? 'Po shfaqen ' + MAX_RESULTS + ' nga ' + all.length + ' — shkruaj më shumë për ta ngushtuar'
-      : all.length + ' produkte';
+    count.textContent = (all.length > MAX_RESULTS
+      ? 'Po shfaqen ' + MAX_RESULTS + ' nga ' + all.length + ' — shkruaj më shumë'
+      : all.length + ' produkte') + '  ·  ' + statusText();
     list.innerHTML = matches.length ? matches.map((p, i) =>
-      '<div data-i="' + i + '" style="padding:10px 12px;border-bottom:1px solid #eee;">' +
-        '<div style="font-weight:600;font-size:15px;">' + esc(p.name) + '</div>' +
-        '<div style="font-size:13px;color:#666;">' + esc(p.category) + (p.category ? ' · ' : '') + esc(priceText(p)) + '</div>' +
+      '<div data-i="' + i + '">' +
+        '<div style="flex:1;min-width:0;">' +
+          '<div style="font-weight:600;font-size:15px;">' + esc(p.name) + '</div>' +
+          '<div style="font-size:13px;color:#666;">' + esc(p.category) + (p.category ? ' · ' : '') + esc(priceText(p)) + '</div>' +
+        '</div>' +
+        '<div class="plus">+</div>' +
       '</div>').join('')
       : '<div style="padding:16px;color:#666;">Asnjë produkt nuk përputhet.</div>';
   }
-  function openModal(rowId) {
+  function openModal() {
     buildModal();
-    targetRow = rowId;
-    modal.style.display = 'block';
-    document.body.style.overflow = 'hidden';
-    const q = document.getElementById('shkodraQ');
-    q.value = '';
-    renderResults('');
-    setTimeout(() => q.focus(), 50);
+    setFabWide(true);                                   // lupa zgjatet si më parë
+    setTimeout(() => {
+      if (fab) {
+        const r = fab.getBoundingClientRect();
+        modal.style.transformOrigin = (r.left + r.width / 2) + 'px ' + (r.top + r.height / 2) + 'px';
+      }
+      modal.style.display = 'block';
+      modal.classList.remove('open'); void modal.offsetWidth; modal.classList.add('open');
+      document.body.style.overflow = 'hidden';
+      const q = document.getElementById('shkodraQ');
+      q.value = '';
+      renderResults('');
+      setTimeout(() => q.focus(), 280);
+    }, 180);
+    refreshREST(false);          // siguri shtesë nëse live nuk punon (max 1 herë/min)
   }
   function closeModal() {
     if (modal) modal.style.display = 'none';
     document.body.style.overflow = '';
-    targetRow = null;
+    setFabWide(false);                                  // lupa kthehet e rrumbullakët
+  }
+  function toast(msg) {
+    const t = document.getElementById('shkodraToast');
+    if (!t) return;
+    t.textContent = msg;
+    t.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => t.classList.remove('show'), 1400);
   }
 
-  // ── Zgjedhja e produktit në rresht ────────────────────────────────────
-  function applyProduct(id, p) {
-    const desc = document.getElementById('desc-' + id);
-    const price = document.getElementById('price-' + id);
-    const unit = document.getElementById('unit-' + id);
-    if (desc) desc.value = p.name;
-    if (price) price.value = priceFor(p);
-    if (unit && !unit.value) unit.value = 'copë';
+  // ── Shtimi i produktit në dokument ────────────────────────────────────
+  function rowIds() {
+    return [...document.querySelectorAll('#itemsBody .item-row')].map(r => r.id.replace('row-', ''));
+  }
+  function addProduct(p) {
+    const price = priceFor(p);
+    const ids = rowIds();
+
+    // 1) Nëse produkti është tashmë në listë -> rrit sasinë
+    for (const id of ids) {
+      const d = document.getElementById('desc-' + id);
+      if (d && d.value.trim() === p.name) {
+        const q = document.getElementById('qty-' + id);
+        q.value = (parseFloat(q.value) || 0) + 1;
+        calcRowTotal(id); calcTotals();
+        toast('✓ ' + p.name + ' — sasia ' + q.value);
+        return;
+      }
+    }
+    // 2) Rresht bosh në fund -> mbushe; përndryshe rresht i ri
+    let id = null;
+    const last = ids[ids.length - 1];
+    if (last) {
+      const d = document.getElementById('desc-' + last);
+      const pr = document.getElementById('price-' + last);
+      if (d && !d.value.trim() && !(parseFloat(pr.value) > 0)) id = last;
+    }
+    if (id === null) {
+      addRow(p.name, 1, 'copë', price, 'Tjeter');
+      id = String(rowCounter);
+    } else {
+      document.getElementById('desc-' + id).value = p.name;
+      document.getElementById('price-' + id).value = price;
+      const unit = document.getElementById('unit-' + id);
+      if (unit && !unit.value) unit.value = 'copë';
+      const type = document.getElementById('type-' + id);
+      if (type && type.value !== 'Tjeter') { type.value = 'Tjeter'; if (typeof onTypeChange === 'function') onTypeChange(id); document.getElementById('desc-' + id).value = p.name; }
+    }
     calcRowTotal(id);
     calcTotals();
-  }
-  function injectPicker(id) {
-    const desc = document.getElementById('desc-' + id);
-    if (!desc || document.getElementById('prod-' + id)) return;
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.id = 'prod-' + id;
-    btn.className = 'btn btn-outline-primary btn-sm w-100 mb-2 text-start';
-    btn.textContent = '🔍 Kërko produkt nga shkodratech.al';
-    btn.addEventListener('click', () => openModal(id));
-    desc.parentNode.insertBefore(btn, desc);
-  }
-
-  // Çdo rresht i ri merr butonin e kërkimit
-  const _addRow = window.addRow;
-  window.addRow = function () {
-    const r = _addRow.apply(this, arguments);
-    injectPicker(rowCounter);
-    return r;
-  };
-
-  // ── Statusi ───────────────────────────────────────────────────────────
-  function setStatus(msg, isError) {
-    let el = document.getElementById('shkodraStatus');
-    if (!el) {
-      const body = document.getElementById('itemsBody');
-      if (!body) return;
-      el = document.createElement('div');
-      el.id = 'shkodraStatus';
-      body.parentNode.insertBefore(el, body);
-    }
-    el.className = 'small mb-2 ' + (isError ? 'text-danger' : 'text-muted');
-    el.textContent = (isError ? '⚠ ' : '🛒 ') + msg;
+    toast('✓ U shtua: ' + p.name);
   }
 
   // ── Nisja ─────────────────────────────────────────────────────────────
-  async function init() {
-    document.querySelectorAll('#itemsBody .item-row').forEach(row => injectPicker(row.id.replace('row-', '')));
+  function init() {
+    injectStyle();
+    buildFab();
+    // Hiq butonat e vjetër për çdo rresht (nga v2), nëse ka mbetur ndonjë
+    document.querySelectorAll('[id^="prod-"]').forEach(b => b.remove());
+    document.getElementById('shkodraStatus')?.remove();
     try {
       const c = JSON.parse(localStorage.getItem(CACHE_KEY) || '[]');
-      if (c.length) { PRODUCTS = c; setStatus(PRODUCTS.length + ' produkte nga shkodratech.al', false); }
+      if (c.length) { PRODUCTS = c; }
     } catch (e) {}
-    try {
-      const list = (await fetchAll()).map(normalize).filter(p => p.name && !p.hidden);
-      if (!list.length) throw new Error('asnjë produkt me emër (kontrollo emrat e fushave)');
-      PRODUCTS = list.sort((a, b) => a.name.localeCompare(b.name));
-      try { localStorage.setItem(CACHE_KEY, JSON.stringify(PRODUCTS)); } catch (e) {}
-      setStatus(PRODUCTS.length + ' produkte nga shkodratech.al', false);
-      if (modal && modal.style.display === 'block') renderResults(document.getElementById('shkodraQ').value);
-    } catch (e) {
-      console.error('shkodra-products:', e);
-      setStatus(PRODUCTS.length
-        ? 'Offline, po përdor ' + PRODUCTS.length + ' produkte të ruajtura'
-        : 'Produktet nuk u ngarkuan (' + e.message + ')', !PRODUCTS.length);
-    }
+    startLive();
+    // Rifreskim kur kthehesh në aplikacion (telefoni)
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible' && liveState !== 'live') refreshREST(false);
+    });
+    window.addEventListener('online', () => { if (liveState !== 'live') refreshREST(true); });
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
   else init();
