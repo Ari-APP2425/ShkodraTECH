@@ -75,6 +75,7 @@ function resetFormForNew() {
   document.getElementById('bleres_email').value = '';
   if (document.getElementById('bleres_modeli')) document.getElementById('bleres_modeli').value = '';
 
+  montimState = false; montimRemovedNote = null;
   document.getElementById('itemsBody').innerHTML = '';
   rowCounter = 0;
   addRow();
@@ -294,6 +295,7 @@ async function loadFromArkiva(id) {
   bootstrap.Modal.getInstance(document.getElementById('viewArkivaModal'))?.hide();
 
   editingId = id; // Vendos ID e dokumentit që po editohet
+  montimLoading = true;
 
   setDocType(d.docType || 'fature');
   document.getElementById('leshuesi_emri').value = d.leshuesi?.emri || '';
@@ -324,6 +326,7 @@ async function loadFromArkiva(id) {
   rowCounter = 0;
   (d.rows || []).forEach(r => addRow(r.desc, r.qty, r.unit, r.price));
   calcTotals();
+  montimLoading = false;
 
   showTab('krijoTab', document.querySelectorAll('.nav-tab')[0]);
 
@@ -495,6 +498,7 @@ function addRow(desc='',qty=1,unit='',price=0,type='Kamera',res='',extra='',mark
           <option value="DVR" ${type==='DVR'?'selected':''}>DVR</option>
           <option value="NVR" ${type==='NVR'?'selected':''}>NVR</option>
           <option value="XVR" ${type==='XVR'?'selected':''}>XVR</option>
+          <option value="Montim" ${type==='Montim'?'selected':''}>Montim / Konfigurim</option>
           <option value="HDD" ${type==='HDD'?'selected':''}>HDD</option>
           <option value="Switch" ${type==='Switch'?'selected':''}>Switch</option>
           <option value="Koka" ${type==='Koka'?'selected':''}>Koka</option>
@@ -546,7 +550,7 @@ function buildResOptions(type,res) {
   if (type==='Koka') {
     return `<option value="">Konektori...</option>` + CONNECTOR_TYPES.map(c=>`<option value="${c}" ${c===res?'selected':''}>${c}</option>`).join('');
   }
-  if (type==='Kuti' || type==='Cavo' || type==='Tjeter') {
+  if (type==='Kuti' || type==='Cavo' || type==='Tjeter' || type==='Montim') {
     return `<option value="">—</option>`;
   }
   return `<option value="">MP...</option>` + RESOLUTIONS.map(r=>`<option value="${r}" ${r===res?'selected':''}>${r}</option>`).join('');
@@ -583,8 +587,18 @@ function onTypeChange(id) {
   if (descInput) {
     descInput.placeholder = type==='Tjeter' ? 'Emërtimi (p.sh. Kamera Hikvision, Sistem Alarmi, Dahua...)' : 'Përshkrimi...';
     if (type==='Tjeter') descInput.focus();
+    if (type==='Montim') {
+      // sigurohemi që përshkrimi përmban "Montim" (ruhet dhe rihapet nga arkiva)
+      if (!MONTIM_RE.test(descInput.value)) {
+        descInput.value = descInput.value.trim() ? MONTIM_DESC + ' – ' + descInput.value.trim() : MONTIM_DESC;
+      }
+    } else if (descInput.value.trim().startsWith(MONTIM_DESC)) {
+      // u largua nga Montim -> hiq tekstin automatik
+      descInput.value = descInput.value.replace(MONTIM_DESC, '').replace(/^\s*[–-]\s*/, '').trim();
+    }
   }
   updateSpec(id);
+  calcTotals();
 }
 
 function updateSpec(id) {
@@ -607,6 +621,41 @@ function calcRowTotal(id) {
   const el=document.getElementById('rowtotal-'+id);
   if(el) el.textContent=currSymbol+' '+(q*p).toFixed(2);
 }
+// ── MONTIM / KONFIGURIM -> hiqet shënimi "nuk janë përfshirë..." ─────────
+const MONTIM_RE = /montim|konfigurim|\binstalim\b/i;
+const MONTIM_DESC = 'Montim dhe Konfigurim';
+const MONTIM_NOTE_RE = /Në vlerën e paraqitur në preventiv nuk janë përfshirë shërbimet e montimit[\s\S]*?në objekt\.?/;
+let montimState = false, montimRemovedNote = null, montimLoading = false;
+function hasMontimRow() {
+  return [...document.querySelectorAll('#itemsBody .item-row')].some(row => {
+    const rid = row.id.replace('row-', '');
+    if (document.getElementById('type-' + rid)?.value === 'Montim') return true;
+    const v = document.getElementById('desc-' + rid)?.value || '';
+    return MONTIM_RE.test(v);
+  });
+}
+function syncMontimNote() {
+  const has = hasMontimRow();
+  montimState = has;
+  if (montimLoading) return;
+  const ta = document.getElementById('shenime');
+  if (!ta) return;
+  // Me Montim/Konfigurim: hiqet vetëm pjesa për montimin; pjesa e materialeve mbetet.
+  const FULL1 = 'nuk janë përfshirë shërbimet e montimit dhe konfigurimit, si dhe materialet';
+  const SHORT1 = 'nuk janë përfshirë materialet';
+  const FULL2 = 'Këto shërbime dhe materiale do të llogariten';
+  const SHORT2 = 'Këto materiale do të llogariten';
+  const v = ta.value;
+  const nv = has ? v.split(FULL1).join(SHORT1).split(FULL2).join(SHORT2)
+                 : v.split(SHORT1).join(FULL1).split(SHORT2).join(FULL2);
+  if (nv !== v) ta.value = nv;
+  montimRemovedNote = null;
+}
+// Pas klikimit të butonave IP / AN / ✕ rregullo shënimin sipas rreshtave aktualë
+document.addEventListener('click', e => {
+  if (e.target.closest && e.target.closest('.btn-shenime-tpl')) setTimeout(syncMontimNote, 0);
+});
+
 function calcTotals() {
   let sub=0;
   document.querySelectorAll('#itemsBody .item-row').forEach(row=>{
@@ -642,6 +691,7 @@ function calcTotals() {
     document.getElementById('displayTotal').parentElement?.insertAdjacentElement('afterend', eqEl);
   }
   eqEl.textContent = converted !== null ? '≈ ' + otherCurrencySymbol(monedha) + ' ' + converted.toFixed(2) : '';
+  syncMontimNote();
 }
 
 function collectData() {
