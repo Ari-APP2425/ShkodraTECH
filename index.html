@@ -627,6 +627,18 @@ body {
 /* Textarea shënime — pak më e lartë */
 #shenime { font-size: 0.85rem; line-height: 1.55; resize: vertical; min-height: 110px; }
 
+
+/* ── KOPJE REZERVË ─────────────────────────────────────── */
+.bk-card { border:1px solid var(--border); border-radius:var(--radius); padding:10px 12px; margin-bottom:12px; background:var(--card-bg); box-shadow:var(--shadow-sm); }
+.bk-status { font-size:0.82rem; font-weight:600; margin-bottom:8px; }
+.bk-actions { display:flex; flex-wrap:wrap; gap:6px; }
+.bk-ok   { border-color:#a7f3d0; background:#f0fdf9; } .bk-ok .bk-status { color:#047857; }
+.bk-warn { border-color:#fcd34d; background:#fffbeb; } .bk-warn .bk-status { color:#92400e; }
+.bk-info .bk-status { color:var(--muted); }
+
+.item-note { font-size:0.82rem; color:#374151; background:#f9fafb; }
+.note-toggle { font-size:0.8rem; text-decoration:none; }
+@media (max-width:768px){ #itemsBody .item-note{ font-size:15px!important; min-height:80px } #itemsBody .note-toggle{ font-size:15px; padding:6px 0!important } }
 </style>
 </head>
 <body>
@@ -920,6 +932,7 @@ body {
      TAB: ARKIVA
 ══════════════════════════════════════════════════════════ -->
 <div id="arkivaTab" class="d-none container-fluid px-3 py-3">
+  <div id="backupPanel"></div>
   <div class="stats-grid" id="statsGrid"></div>
   <div class="search-bar">
     <input type="text" id="arkivaSearch" class="form-control" placeholder="Kërko klient ose nr. faturë..." oninput="renderArkiva()">
@@ -1145,7 +1158,11 @@ function setFilter(f, btn) {
   renderArkiva();
 }
 
-// ── SUPABASE CONFIG ───────────────────────────────────────────────────
+// ── ARKIVA LOKALE (IndexedDB) + KOPJE REZERVË (GitHub / skedar JSON) ──────────
+// Dokumentet ruhen brenda aplikacionit, në pajisje. Nuk varet më nga Supabase.
+// Kopja rezervë: skedar JSON (Eksporto/Importo) dhe sinkronizim opsional me një repo GitHub.
+
+// Supabase mbahet vetëm për të importuar dokumentet e vjetra (nëse projekti është aktiv).
 const SUPA_URL = 'https://dkskomqdhcxcdaipdqop.supabase.co';
 const SUPA_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRrc2tvbXFkaGN4Y2RhaXBkcW9wIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODAwMTQxNDQsImV4cCI6MjA5NTU5MDE0NH0.7FUKAsie7NW34Ac1WWrs9TuKcZDhsj5jRRTFAhDiph0';
 const SUPA_HEADERS = {
@@ -1154,53 +1171,400 @@ const SUPA_HEADERS = {
   'Authorization': 'Bearer ' + SUPA_KEY
 };
 
-// ── STORAGE (Supabase) ────────────────────────────────────────────────
+// ── IndexedDB ─────────────────────────────────────────────────────────
+const ARK_DB_NAME = 'shkodratech_arkiva';
+let _arkDbPromise = null;
+
+function arkDb() {
+  if (_arkDbPromise) return _arkDbPromise;
+  _arkDbPromise = new Promise((resolve, reject) => {
+    const req = indexedDB.open(ARK_DB_NAME, 1);
+    req.onupgradeneeded = () => {
+      const db = req.result;
+      if (!db.objectStoreNames.contains('invoices')) db.createObjectStore('invoices', { keyPath: 'id' });
+      if (!db.objectStoreNames.contains('meta')) db.createObjectStore('meta', { keyPath: 'key' });
+    };
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => { _arkDbPromise = null; reject(req.error || new Error('IndexedDB nuk hapet')); };
+  });
+  return _arkDbPromise;
+}
+
+function arkTx(stores, mode, fn) {
+  return arkDb().then(db => new Promise((resolve, reject) => {
+    const tx = db.transaction(stores, mode);
+    let result;
+    Promise.resolve(fn(tx)).then(r => { result = r; }).catch(reject);
+    tx.oncomplete = () => resolve(result);
+    tx.onerror = () => reject(tx.error);
+    tx.onabort = () => reject(tx.error || new Error('Transaksioni u anulua'));
+  }));
+}
+function reqP(r) { return new Promise((res, rej) => { r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); }); }
+
+async function metaGet(key, def) {
+  const row = await arkTx(['meta'], 'readonly', tx => reqP(tx.objectStore('meta').get(key)));
+  return row ? row.value : def;
+}
+async function metaSet(key, value) {
+  await arkTx(['meta'], 'readwrite', tx => reqP(tx.objectStore('meta').put({ key, value })));
+}
+
+const stampOf = o => Date.parse(o.updatedAt || o.savedAt || 0) || 0;
+
+// ── API e arkivës (i njëjti emër si më parë) ──────────────────────────
 async function getAllInvoices() {
   try {
-    const res = await fetch(SUPA_URL + '/rest/v1/invoices?order=created_at.desc', {
-      headers: SUPA_HEADERS
-    });
-    const rows = await res.json();
-    if (!Array.isArray(rows)) return [];
-    return rows.map(r => ({ ...r.data, id: r.id, savedAt: r.created_at }));
-  } catch(e) { return []; }
+    const rows = await arkTx(['invoices'], 'readonly', tx => reqP(tx.objectStore('invoices').getAll()));
+    return rows.sort((a, b) => (Date.parse(b.savedAt) || 0) - (Date.parse(a.savedAt) || 0));
+  } catch (e) { console.error('arkiva:', e); return []; }
 }
 
 async function saveInvoice(data) {
   const id = 'invoice:' + Date.now();
   data.id = id;
   data.savedAt = new Date().toISOString();
-  const res = await fetch(SUPA_URL + '/rest/v1/invoices', {
-    method: 'POST',
-    headers: { ...SUPA_HEADERS, 'Prefer': 'return=representation' },
-    body: JSON.stringify({ id: id, data: data })
-  });
-  if (!res.ok) {
-    const err = await res.json();
-    throw new Error(err.message || 'Gabim ruajtjeje');
-  }
+  await arkTx(['invoices'], 'readwrite', tx => reqP(tx.objectStore('invoices').put(data)));
+  scheduleAutoSync();
   return id;
 }
 
 async function updateInvoice(id, data) {
+  const rows = await arkTx(['invoices'], 'readonly', tx => reqP(tx.objectStore('invoices').get(id)));
+  data.id = id;
+  data.savedAt = (rows && rows.savedAt) || data.savedAt || new Date().toISOString();
   data.updatedAt = new Date().toISOString();
-  const res = await fetch(SUPA_URL + '/rest/v1/invoices?id=eq.' + encodeURIComponent(id), {
-    method: 'PATCH',
-    headers: { ...SUPA_HEADERS, 'Prefer': 'return=representation' },
-    body: JSON.stringify({ data: data })
-  });
-  if (!res.ok) {
-    const err = await res.json();
-    throw new Error(err.message || 'Gabim gjatë përditësimit');
-  }
+  await arkTx(['invoices'], 'readwrite', tx => reqP(tx.objectStore('invoices').put(data)));
+  scheduleAutoSync();
 }
 
 async function deleteInvoice(id) {
-  await fetch(SUPA_URL + '/rest/v1/invoices?id=eq.' + encodeURIComponent(id), {
-    method: 'DELETE',
-    headers: SUPA_HEADERS
+  await arkTx(['invoices', 'meta'], 'readwrite', async tx => {
+    tx.objectStore('invoices').delete(id);
+  });
+  const del = await metaGet('deleted', {});
+  del[id] = Date.now();
+  await metaSet('deleted', del);
+  scheduleAutoSync();
+}
+
+// ── KOPJE REZERVË: ndërtim + bashkim ──────────────────────────────────
+async function buildBackup() {
+  const invoices = await getAllInvoices();
+  return {
+    app: 'shkodratech-arkiva',
+    version: 1,
+    exportedAt: new Date().toISOString(),
+    counter: parseInt(localStorage.getItem('fatura_counter_fature') || '0') || 0,
+    invoices,
+    deleted: await metaGet('deleted', {})
+  };
+}
+
+// Bashkon një kopje (nga skedari / GitHub / Supabase) me atë lokale. Fituesi: më e reja.
+async function mergeBackup(b) {
+  if (!b || !Array.isArray(b.invoices)) throw new Error('Skedari nuk është kopje e vlefshme e arkivës');
+  const local = await getAllInvoices();
+  const byId = new Map(local.map(i => [i.id, i]));
+  const deleted = await metaGet('deleted', {});
+  let added = 0, updated = 0, removed = 0;
+
+  // fshirjet e regjistruara në kopjen tjetër
+  Object.entries(b.deleted || {}).forEach(([id, ts]) => { if (!(deleted[id] >= ts)) deleted[id] = ts; });
+
+  const toPut = [], toDelete = [];
+  for (const inc of b.invoices) {
+    if (!inc || !inc.id) continue;
+    if (deleted[inc.id] && deleted[inc.id] >= stampOf(inc)) continue;     // u fshi pas këtij versioni
+    const cur = byId.get(inc.id);
+    if (!cur) { toPut.push(inc); added++; }
+    else if (stampOf(inc) > stampOf(cur)) { toPut.push(inc); updated++; }
+  }
+  for (const cur of local) {
+    if (deleted[cur.id] && deleted[cur.id] >= stampOf(cur)) { toDelete.push(cur.id); removed++; }
+  }
+  await arkTx(['invoices'], 'readwrite', tx => {
+    const st = tx.objectStore('invoices');
+    toPut.forEach(i => st.put(i));
+    toDelete.forEach(id => st.delete(id));
+  });
+  await metaSet('deleted', deleted);
+  const c = Math.max(parseInt(localStorage.getItem('fatura_counter_fature') || '0') || 0, parseInt(b.counter) || 0);
+  if (c) { try { localStorage.setItem('fatura_counter_fature', c); } catch (e) {} }
+  return { added, updated, removed };
+}
+
+// ── Eksporto / Importo skedar ─────────────────────────────────────────
+async function exportBackupFile() {
+  const b = await buildBackup();
+  const blob = new Blob([JSON.stringify(b, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'shkodratech-arkiva-' + new Date().toISOString().slice(0, 10) + '.json';
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 3000);
+  await metaSet('lastFileBackup', Date.now());
+  renderBackupPanel();
+}
+async function importBackupFile(file) {
+  const text = await file.text();
+  const res = await mergeBackup(JSON.parse(text));
+  await renderArkiva(); updateArkivaBadge();
+  return res;
+}
+
+// ── GitHub ────────────────────────────────────────────────────────────
+function ghCfg() {
+  try { return JSON.parse(localStorage.getItem('gh_backup_cfg') || 'null'); } catch (e) { return null; }
+}
+function ghReady() { const c = ghCfg(); return !!(c && c.token && c.repo); }
+
+const toB64 = s => btoa(unescape(encodeURIComponent(s)));
+const fromB64 = s => decodeURIComponent(escape(atob(s.replace(/\s/g, ''))));
+
+async function ghFetch(path, opts = {}) {
+  const c = ghCfg();
+  const res = await fetch('https://api.github.com/repos/' + c.repo + path, {
+    ...opts,
+    headers: {
+      'Authorization': 'Bearer ' + c.token,
+      'Accept': 'application/vnd.github+json',
+      'X-GitHub-Api-Version': '2022-11-28',
+      ...(opts.headers || {})
+    }
+  });
+  return res;
+}
+async function ghErr(res) {
+  let m = '';
+  try { m = (await res.json()).message || ''; } catch (e) {}
+  if (res.status === 401) return 'Token i pavlefshëm ose i skaduar';
+  if (res.status === 403) return 'Token pa leje (duhet "Contents: Read and write")';
+  if (res.status === 404) return 'Repo/dega/skedari nuk u gjet (kontrollo emrin e repo-s dhe tokenin)';
+  return 'GitHub ' + res.status + (m ? ': ' + m : '');
+}
+async function ghGetRemote() {
+  const c = ghCfg();
+  const q = '?ref=' + encodeURIComponent(c.branch || 'main');
+  const res = await ghFetch('/contents/' + c.path.split('/').map(encodeURIComponent).join('/') + q);
+  if (res.status === 404) {
+    // 404 mund të jetë edhe repo e gabuar: kontrollo repo-n
+    const r2 = await ghFetch('');
+    if (!r2.ok) throw new Error(await ghErr(r2));
+    return null;
+  }
+  if (!res.ok) throw new Error(await ghErr(res));
+  const j = await res.json();
+  let text;
+  if (j.content && j.encoding === 'base64') text = fromB64(j.content);
+  else {
+    const raw = await ghFetch('/contents/' + c.path.split('/').map(encodeURIComponent).join('/') + q,
+      { headers: { 'Accept': 'application/vnd.github.raw+json' } });
+    text = await raw.text();
+  }
+  return { sha: j.sha, data: JSON.parse(text) };
+}
+
+let _syncing = false, _syncTimer = null;
+const sig = b => JSON.stringify({ i: b.invoices.map(x => x.id + '@' + stampOf(x)).sort(), d: b.deleted, c: b.counter });
+
+// Sinkronizim i plotë: merr nga GitHub -> bashkon -> ngarkon nëse ka ndryshime.
+async function syncGithub(silent) {
+  if (!ghReady()) { if (!silent) openBackupModal(); return null; }
+  if (_syncing) return null;
+  _syncing = true; setSyncState('busy');
+  try {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const remote = await ghGetRemote();
+      let merge = { added: 0, updated: 0, removed: 0 };
+      if (remote) merge = await mergeBackup(remote.data);
+      const local = await buildBackup();
+      let uploaded = false;
+      if (!remote || sig(local) !== sig(remote.data)) {
+        const c = ghCfg();
+        const body = {
+          message: 'Backup arkiva ' + new Date().toISOString(),
+          content: toB64(JSON.stringify(local, null, 2)),
+          branch: c.branch || 'main'
+        };
+        if (remote) body.sha = remote.sha;
+        const put = await ghFetch('/contents/' + c.path.split('/').map(encodeURIComponent).join('/'),
+          { method: 'PUT', body: JSON.stringify(body) });
+        if (put.status === 409 || put.status === 422) { if (attempt === 0) continue; }
+        if (!put.ok) throw new Error(await ghErr(put));
+        uploaded = true;
+      }
+      await metaSet('lastGithubSync', Date.now());
+      await metaSet('lastGithubError', '');
+      setSyncState('ok');
+      if (merge.added || merge.updated || merge.removed) { renderArkiva(); updateArkivaBadge(); }
+      renderBackupPanel();
+      return { ...merge, uploaded };
+    }
+  } catch (e) {
+    console.error('github sync:', e);
+    await metaSet('lastGithubError', e.message || String(e));
+    setSyncState('err');
+    renderBackupPanel();
+    if (!silent) alert('Sinkronizimi me GitHub dështoi: ' + (e.message || e));
+    return null;
+  } finally { _syncing = false; }
+}
+function scheduleAutoSync() {
+  if (!ghReady()) { renderBackupPanel(); return; }
+  clearTimeout(_syncTimer);
+  _syncTimer = setTimeout(() => syncGithub(true), 4000);
+}
+let _syncState = 'idle';
+function setSyncState(s) { _syncState = s; renderBackupPanel(); }
+
+// ── Import nga Supabase (e vjetra) ────────────────────────────────────
+async function importFromSupabase() {
+  const res = await fetch(SUPA_URL + '/rest/v1/invoices?order=created_at.desc', { headers: SUPA_HEADERS });
+  if (!res.ok) {
+    throw new Error('Supabase nuk përgjigjet (' + res.status + '). Nëse projekti është në pause, rivendose nga paneli i Supabase dhe provo prapë.');
+  }
+  const rows = await res.json();
+  if (!Array.isArray(rows)) throw new Error('Përgjigje e papritur nga Supabase');
+  const invoices = rows.map(r => ({ ...r.data, id: r.id, savedAt: (r.data && r.data.savedAt) || r.created_at }));
+  const out = await mergeBackup({ invoices, deleted: {} });
+  return { ...out, total: invoices.length };
+}
+
+// ── Paneli i kopjes rezervë (në tab-in Arkiva) ────────────────────────
+function fmtAgo(ts) {
+  if (!ts) return null;
+  const d = new Date(ts);
+  return d.toLocaleDateString('sq-AL') + ' ' + d.toLocaleTimeString('sq-AL', { hour: '2-digit', minute: '2-digit' });
+}
+async function renderBackupPanel() {
+  const el = document.getElementById('backupPanel');
+  if (!el) return;
+  const [lastGh, lastFile, ghError] = await Promise.all([
+    metaGet('lastGithubSync', 0), metaGet('lastFileBackup', 0), metaGet('lastGithubError', '')
+  ]);
+  let status, cls;
+  if (_syncState === 'busy') { status = '<i class="fa-solid fa-spinner fa-spin me-1"></i>Po sinkronizohet me GitHub...'; cls = 'bk-info'; }
+  else if (ghReady() && ghError) { status = '<i class="fa-solid fa-triangle-exclamation me-1"></i>GitHub: ' + ghError; cls = 'bk-warn'; }
+  else if (ghReady() && lastGh) { status = '<i class="fa-solid fa-circle-check me-1"></i>Kopja në GitHub: ' + fmtAgo(lastGh); cls = 'bk-ok'; }
+  else if (ghReady()) { status = 'GitHub i lidhur — ende pa sinkronizim'; cls = 'bk-info'; }
+  else if (lastFile) { status = '<i class="fa-solid fa-circle-check me-1"></i>Skedari i fundit u shkarkua: ' + fmtAgo(lastFile) + ' · GitHub nuk është lidhur'; cls = 'bk-info'; }
+  else { status = '<i class="fa-solid fa-triangle-exclamation me-1"></i>Nuk ke asnjë kopje rezervë. Lidh GitHub ose shkarko skedarin.'; cls = 'bk-warn'; }
+  el.innerHTML =
+    '<div class="bk-card ' + cls + '">' +
+      '<div class="bk-status">' + status + '</div>' +
+      '<div class="bk-actions">' +
+        '<button type="button" class="btn btn-sm btn-primary" onclick="syncGithub(false)"><i class="fa-brands fa-github me-1"></i>Sinkronizo</button>' +
+        '<button type="button" class="btn btn-sm btn-outline-secondary" onclick="openBackupModal()"><i class="fa-solid fa-gear me-1"></i>Cilësimet</button>' +
+        '<button type="button" class="btn btn-sm btn-outline-secondary" onclick="exportBackupFile()"><i class="fa-solid fa-download me-1"></i>Eksporto</button>' +
+        '<button type="button" class="btn btn-sm btn-outline-secondary" onclick="document.getElementById(\'bkFile\').click()"><i class="fa-solid fa-upload me-1"></i>Importo</button>' +
+      '</div>' +
+      '<input type="file" id="bkFile" accept=".json,application/json" class="d-none" onchange="onBackupFilePicked(this)">' +
+    '</div>';
+}
+async function onBackupFilePicked(inp) {
+  const f = inp.files && inp.files[0];
+  inp.value = '';
+  if (!f) return;
+  try {
+    const r = await importBackupFile(f);
+    alert('U importua: ' + r.added + ' të reja, ' + r.updated + ' të përditësuara.');
+  } catch (e) { alert('Importi dështoi: ' + e.message); }
+}
+
+function buildBackupModal() {
+  if (document.getElementById('backupModal')) return;
+  const wrap = document.createElement('div');
+  wrap.innerHTML =
+  '<div class="modal fade" id="backupModal" tabindex="-1"><div class="modal-dialog modal-dialog-scrollable"><div class="modal-content">' +
+    '<div class="modal-header py-2"><h6 class="modal-title mb-0"><i class="fa-brands fa-github me-2"></i>Kopje rezervë në GitHub</h6>' +
+    '<button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>' +
+    '<div class="modal-body">' +
+      '<p class="small text-muted mb-3">Dokumentet ruhen në këtë pajisje. Këtu e lidh me një repo <b>private</b> në GitHub, ' +
+      'ku shkruhet automatikisht një skedar JSON sa herë ruan ose fshin diçka. Kështu s\'humbet gjë edhe nëse ndërron telefon ose pastron shfletuesin.</p>' +
+      '<label class="form-label">Repo (përdorues/emri)</label>' +
+      '<input id="ghRepo" class="form-control mb-2" placeholder="p.sh. shkodratech/arkiva-backup" autocapitalize="off" autocomplete="off">' +
+      '<label class="form-label">Token (Fine-grained, vetëm për këtë repo)</label>' +
+      '<input id="ghToken" type="password" class="form-control mb-2" placeholder="github_pat_..." autocomplete="off">' +
+      '<div class="row g-2 mb-2"><div class="col-6"><label class="form-label">Dega</label><input id="ghBranch" class="form-control" value="main"></div>' +
+      '<div class="col-6"><label class="form-label">Skedari</label><input id="ghPath" class="form-control" value="arkiva.json"></div></div>' +
+      '<details class="small mb-2"><summary>Si e krijoj tokenin?</summary><ol class="ps-3 mt-2 mb-0">' +
+        '<li>Krijo një repo të re <b>private</b> në GitHub (p.sh. <i>arkiva-backup</i>) me një README, që të ekzistojë dega <i>main</i>.</li>' +
+        '<li>GitHub → Settings → Developer settings → Fine-grained tokens → Generate new token.</li>' +
+        '<li>Repository access: <i>Only select repositories</i> → zgjidh vetëm atë repo.</li>' +
+        '<li>Permissions → Repository → <b>Contents: Read and write</b>.</li>' +
+        '<li>Kopjo tokenin dhe ngjite më sipër. Ruhet vetëm në këtë pajisje.</li></ol></details>' +
+      '<div id="ghMsg" class="small"></div>' +
+      '<hr><div class="small fw-semibold mb-2">Dokumente të vjetra</div>' +
+      '<button type="button" class="btn btn-sm btn-outline-secondary" id="supaImportBtn"><i class="fa-solid fa-cloud-arrow-down me-1"></i>Importo nga Supabase (një herë)</button>' +
+      '<div id="supaMsg" class="small mt-2"></div>' +
+    '</div>' +
+    '<div class="modal-footer py-2">' +
+      '<button type="button" class="btn btn-sm btn-outline-danger me-auto" id="ghDisconnect">Shkëput</button>' +
+      '<button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Mbyll</button>' +
+      '<button type="button" class="btn btn-sm btn-primary" id="ghSave">Ruaj dhe testo</button>' +
+    '</div></div></div></div>';
+  document.body.appendChild(wrap.firstChild);
+
+  document.getElementById('ghSave').addEventListener('click', async () => {
+    const msg = document.getElementById('ghMsg');
+    const cfg = {
+      repo: document.getElementById('ghRepo').value.trim().replace(/^https?:\/\/github\.com\//, '').replace(/\.git$/, '').replace(/\/$/, ''),
+      token: document.getElementById('ghToken').value.trim(),
+      branch: document.getElementById('ghBranch').value.trim() || 'main',
+      path: document.getElementById('ghPath').value.trim() || 'arkiva.json'
+    };
+    if (!/^[^/\s]+\/[^/\s]+$/.test(cfg.repo) || !cfg.token) {
+      msg.className = 'small text-danger'; msg.textContent = 'Plotëso repo-n (përdorues/emri) dhe tokenin.'; return;
+    }
+    localStorage.setItem('gh_backup_cfg', JSON.stringify(cfg));
+    msg.className = 'small text-muted'; msg.textContent = 'Po testohet...';
+    const r = await syncGithub(true);
+    const err = await metaGet('lastGithubError', '');
+    if (r && !err) {
+      msg.className = 'small text-success';
+      msg.textContent = '✓ Lidhja funksionon. ' + (r.uploaded ? 'Kopja u ngarkua.' : 'Gjithçka është e përditësuar.') +
+        (r.added || r.updated ? ' U marrën ' + (r.added + r.updated) + ' dokumente nga GitHub.' : '');
+    } else { msg.className = 'small text-danger'; msg.textContent = '✗ ' + (err || 'Dështoi'); }
+  });
+  document.getElementById('ghDisconnect').addEventListener('click', async () => {
+    localStorage.removeItem('gh_backup_cfg');
+    await metaSet('lastGithubError', '');
+    document.getElementById('ghToken').value = '';
+    document.getElementById('ghMsg').textContent = 'U shkëput. Dokumentet mbeten në pajisje.';
+    renderBackupPanel();
+  });
+  document.getElementById('supaImportBtn').addEventListener('click', async () => {
+    const m = document.getElementById('supaMsg');
+    m.className = 'small text-muted'; m.textContent = 'Po lidhet me Supabase...';
+    try {
+      const r = await importFromSupabase();
+      m.className = 'small text-success';
+      m.textContent = '✓ ' + r.total + ' dokumente në Supabase · ' + r.added + ' të reja u shtuan.';
+      renderArkiva(); updateArkivaBadge(); scheduleAutoSync();
+    } catch (e) { m.className = 'small text-danger'; m.textContent = '✗ ' + e.message; }
   });
 }
+function openBackupModal() {
+  buildBackupModal();
+  const c = ghCfg() || {};
+  document.getElementById('ghRepo').value = c.repo || '';
+  document.getElementById('ghToken').value = c.token || '';
+  document.getElementById('ghBranch').value = c.branch || 'main';
+  document.getElementById('ghPath').value = c.path || 'arkiva.json';
+  document.getElementById('ghMsg').textContent = '';
+  new bootstrap.Modal(document.getElementById('backupModal')).show();
+}
+
+// ── Nisja ─────────────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', () => {
+  try { navigator.storage && navigator.storage.persist && navigator.storage.persist(); } catch (e) {}   // mbro nga pastrimi automatik
+  renderBackupPanel();
+  if (ghReady()) setTimeout(() => syncGithub(true), 2500);
+  window.addEventListener('online', () => { if (ghReady()) scheduleAutoSync(); });
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && ghReady()) scheduleAutoSync(); });
+});
 
 // ── SAVE TO ARKIVA ────────────────────────────────────────────────────
 async function saveToArkiva() {
@@ -1253,6 +1617,7 @@ async function updateArkivaBadge() {
 
 // ── RENDER ARKIVA ─────────────────────────────────────────────────────
 async function renderArkiva() {
+  renderBackupPanel();
   const list = document.getElementById('arkivaList');
   const statsGrid = document.getElementById('statsGrid');
   list.innerHTML = '<div class="text-center py-3"><i class="fa-solid fa-spinner fa-spin text-muted"></i></div>';
@@ -1364,7 +1729,7 @@ async function loadFromArkiva(id) {
 
   document.getElementById('itemsBody').innerHTML = '';
   rowCounter = 0;
-  (d.rows || []).forEach(r => addRow(r.desc, r.qty, r.unit, r.price));
+  (d.rows || []).forEach(r => addRow(r.desc, r.qty, r.unit, r.price, undefined, '', '', '', r.note || ''));
   calcTotals();
   montimLoading = false;
 
@@ -1526,8 +1891,9 @@ const CONNECTOR_TYPES = ['RJ45','BNC','DC'];
 const SWITCH_PORTS = ['4 Port','8 Port','16 Port','24 Port','32 Port'];
 const POE_OPTIONS = ['PoE','Jo PoE'];
 
-function addRow(desc='',qty=1,unit='',price=0,type='Kamera',res='',extra='',marka='') {
+function addRow(desc='',qty=1,unit='',price=0,type='Kamera',res='',extra='',marka='',note='') {
   rowCounter++;
+  const noteEsc=String(note||'').replace(/&/g,'&amp;').replace(/</g,'&lt;');
   const id=rowCounter;
   const unitOpts=UNITS.map(u=>`<option value="${u}" ${u===unit?'selected':''}>${u||'—'}</option>`).join('');
   const html=`<div class="item-row" id="row-${id}">
@@ -1554,6 +1920,8 @@ function addRow(desc='',qty=1,unit='',price=0,type='Kamera',res='',extra='',mark
       <button type="button" class="btn btn-sm btn-outline-danger flex-shrink-0" onclick="removeRow(${id})"><i class="fa-solid fa-xmark"></i></button>
     </div>
     <input type="text" id="desc-${id}" class="form-control form-control-sm desc-input mb-2" list="emertimSuggestions" placeholder="${type==='Tjeter'?'Emërtimi (p.sh. Kamera Hikvision, Sistem Alarmi, Dahua...)':'Përshkrimi...'}" value="${desc}" oninput="calcTotals()">
+    <textarea id="note-${id}" class="form-control form-control-sm item-note mb-2 ${note?'':'d-none'}" rows="3" placeholder="Përshkrim / specifikime që dalin nën emrin në dokument...">${noteEsc}</textarea>
+    <button type="button" id="notebtn-${id}" class="btn btn-link btn-sm p-0 mb-2 note-toggle ${note?'d-none':''}" onclick="toggleNote(${id})">＋ Shto përshkrim</button>
     <div class="item-row-numbers">
       <div class="num-group">
         <label>Sasia</label>
@@ -1734,6 +2102,16 @@ function calcTotals() {
   syncMontimNote();
 }
 
+function escNote(t){return String(t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+function toggleNote(id){
+  const n=document.getElementById('note-'+id), b=document.getElementById('notebtn-'+id);
+  if(n){n.classList.remove('d-none');n.focus();} if(b)b.classList.add('d-none');
+}
+function setRowNote(id,text){
+  const n=document.getElementById('note-'+id); if(!n||n.value.trim())return;
+  n.value=text; n.classList.remove('d-none');
+  const b=document.getElementById('notebtn-'+id); if(b)b.classList.add('d-none');
+}
 function collectData() {
   const rows=[];
   document.querySelectorAll('#itemsBody .item-row').forEach(row=>{
@@ -1742,7 +2120,8 @@ function collectData() {
     const qty=parseFloat(document.getElementById('qty-'+id)?.value)||0;
     const unit=document.getElementById('unit-'+id)?.value||'';
     const price=parseFloat(document.getElementById('price-'+id)?.value)||0;
-    rows.push({desc,qty,unit,price,total:qty*price});
+    const note=(document.getElementById('note-'+id)?.value||'').trim();
+    rows.push({desc,qty,unit,price,total:qty*price,note});
   });
   const sub=rows.reduce((a,r)=>a+r.total,0);
   const disc=parseFloat(document.getElementById('zbritje').value)||0;
@@ -1793,7 +2172,7 @@ function buildPreviewHTML(d) {
   const hb=d.isFature?'#1e3a5f':'#065f46';
   const lbl=d.isFature?'FATURË':'PREVENTIV';
   const savedLogoHtml=d.logoBase64?`<div><img src="${d.logoBase64}" style="max-height:120px;max-width:260px;object-fit:contain"></div>`:`<div style="font-size:1.4rem;font-weight:800;color:${hb}">${d.leshuesi?.emri||''}</div>`;
-  const rowsHtml=(d.rows||[]).filter(r=>r.desc||r.total>0).map((r,i)=>`<tr><td>${i+1}</td><td>${r.desc||'—'}</td><td style="text-align:center">${r.qty}</td><td style="text-align:center">${r.unit||'—'}</td><td style="text-align:right">${d.sym} ${r.price.toFixed(2)}</td><td style="text-align:right"><strong>${d.sym} ${r.total.toFixed(2)}</strong></td></tr>`).join('');
+  const rowsHtml=(d.rows||[]).filter(r=>r.desc||r.total>0).map((r,i)=>`<tr><td>${i+1}</td><td>${r.desc||'—'}${r.note?'<div style="font-size:0.78em;color:#555;white-space:pre-line;margin-top:3px;font-weight:400;line-height:1.35">'+escNote(r.note)+'</div>':''}</td><td style="text-align:center">${r.qty}</td><td style="text-align:center">${r.unit||'—'}</td><td style="text-align:right">${d.sym} ${r.price.toFixed(2)}</td><td style="text-align:right"><strong>${d.sym} ${r.total.toFixed(2)}</strong></td></tr>`).join('');
   const eqHtml = (d.convertedTotal!=null) ? `<div style="display:flex;justify-content:flex-end;font-size:0.82rem;color:#6b7280;margin-top:2px"><span>≈ ${d.convertedSym} ${d.convertedTotal.toFixed(2)}</span></div>` : '';
   const totHtml=`<div style="display:flex;justify-content:space-between;padding:4px 0"><span>Nëntotali</span><span>${d.sym} ${d.sub.toFixed(2)}</span></div>${d.discVal>0?`<div style="display:flex;justify-content:space-between;padding:4px 0;color:#e02424"><span>Zbritje (${d.disc}%)</span><span>- ${d.sym} ${d.discVal.toFixed(2)}</span></div>`:''}${d.tvshOn?`<div style="display:flex;justify-content:space-between;padding:4px 0"><span>TVSH (${d.tvshRate}%)</span><span>${d.sym} ${d.tvshVal.toFixed(2)}</span></div>`:''}<div style="display:flex;justify-content:space-between;border-top:2px solid ${ac};margin-top:6px;padding-top:8px;font-weight:800;font-size:1.1rem;color:${ac}"><span>TOTALI</span><span>${d.sym} ${d.total.toFixed(2)}</span></div>${eqHtml}`;
   return `
@@ -2005,11 +2384,12 @@ async function generatePDF(d) {
 
 </script>
 <script>
-// shkodra-products.js (v3)
+// shkodra-products.js (v4)
 // Produktet e shkodratech.al (Firestore, vetëm lexim) brenda aplikacionit të faturave/preventivave.
 // Ngarkoje në index.html PAS app.js:  <script src="shkodra-products.js"><\/script>
 //
 // Çfarë ka të re në v3:
+//  • v4: filtra sipas MARKËS, KATEGORISË dhe LLOJIT të pajisjes (p.sh. Longse → XVR / Kamera IP / Kamera Analoge).
 //  • Buton i vogël rrumbullak poshtë djathtas (🔍) — kur e klikon hapet kërkimi në ekran të plotë.
 //  • Kliko produktin => shtohet menjëherë si rresht i ri (ose rritet sasia nëse ekziston). Dritarja mbetet hapur.
 //  • Përditësim LIVE: sa herë shtohet/hiqet/ndryshon një produkt në shkodratech.al, lista përditësohet vetë.
@@ -2030,6 +2410,62 @@ async function generatePDF(d) {
   let lastError = '';
   let lastFetch = 0;
   let lastStats = null;
+  let lastNoPriceKeys = [];
+  let fBrand = '', fType = '';   // filtrat aktivë (mbahen sa është hapur aplikacioni)
+
+  // ── Marka dhe lloji i pajisjes (zbulim automatik nga emri) ───────────
+  const KNOWN_BRANDS = [
+    ['Longse', /longse/], ['Hikvision', /hikvision|\bds-[27]\w+/], ['HiLook', /hilook/], ['HiWatch', /hiwatch/],
+    ['Dahua', /dahua|\bipc-h|\bhac-h|\bdh-/], ['Imou', /\bimou\b/], ['Ezviz', /ezviz/], ['Uniview', /uniview|\bunv\b/],
+    ['Reolink', /reolink/], ['TP-Link', /tp-?link/], ['Tapo', /\btapo\b/], ['Tenda', /tenda/], ['Mikrotik', /mikrotik/],
+    ['Ubiquiti', /ubiquiti|unifi/], ['D-Link', /d-?link/], ['Cudy', /cudy/], ['Netis', /netis/], ['Mercusys', /mercusys/],
+    ['Ajax', /\bajax\b/], ['DSC', /\bdsc\b/], ['Paradox', /paradox/], ['Satel', /satel/], ['Risco', /risco/],
+    ['Craftsman', /craftsman/], ['CP Plus', /cp ?plus/], ['Provision-ISR', /provision/], ['Space Technology', /space tech/],
+    ['Safer', /\bsafer\b/], ['Ctronics', /ctronics/], ['Xmeye', /xmeye/], ['Zosi', /zosi/], ['Tiandy', /tiandy/],
+    ['Milesight', /milesight/], ['Hanwha', /hanwha|wisenet/], ['Seagate', /seagate/], ['Western Digital', /western digital|\bwd\d|\bwd ?(purple|blue|red)/],
+    ['Toshiba', /toshiba/], ['Samsung', /samsung/], ['Huawei', /huawei/]
+  ];
+  function detectBrand(text) {
+    const t = ' ' + text.toLowerCase() + ' ';
+    for (const [name, re] of KNOWN_BRANDS) if (re.test(t)) return name;
+    return '';
+  }
+  function cleanBrand(b) {
+    b = String(b || '').trim();
+    if (!b) return '';
+    const low = b.toLowerCase();
+    for (const [name] of KNOWN_BRANDS) if (name.toLowerCase() === low) return name;
+    return b;
+  }
+  // Rendi i rregullave ka rëndësi: regjistruesit para kamerave, kamerat para aksesorëve.
+  function detectTypeOnce(text) {
+    const t = text.toLowerCase();
+    const camWord = /\bkamer|\bcamera|\bcam\b|bullet|\bdome\b|\bptz\b|turret|ipc-|ds-2c[de]|ds-2de|\bhac-[hb]|\bhfw|\bhdw/.test(t);
+    const startsRec = /^\s*(xvr|nvr|dvr)/.test(t);
+    if (startsRec || !camWord) {
+      if (/xvr/.test(t)) return 'XVR';
+      if (/\bnvr|nvr\d|ds-7[0-9]{3}ni|ds-96/.test(t)) return 'NVR';
+      if (/\bdvr|dvr\d/.test(t)) return 'DVR';
+    }
+    if (camWord) {
+      if (/wi-?fi|\b4g\b|solar|bateri|battery/.test(t)) return 'Kamera WiFi / 4G';
+      if (/analog|hdcvi|hdtvi|\btvi\b|\bahd\b|\bcvi\b|2 ?in ?1|4 ?in ?1|ds-2ce|\bhac-|cvbs/.test(t)) return 'Kamera Analoge';
+      if (/\bip\b|\bpoe\b|network|ipc|ds-2cd|ds-2de|ds-2cv|onvif|smart/.test(t)) return 'Kamera IP';
+      return 'Kamera';
+    }
+    if (/\bhdd\b|hard ?disk|\bssd\b|skyhawk|\bpurple\b|\bwd\d/.test(t) || /seagate|western digital/.test(t)) return 'HDD';
+    if (/switch/.test(t)) return 'Switch';
+    if (/router|access ?point|\bap\b|mesh|extender|repeater|wi-?fi|modem|antenn/.test(t)) return 'Router / WiFi';
+    if (/kabll|kabel|cable|cavo|\butp\b|cat ?[56]e?\b|rg ?59|coax|siames/.test(t)) return 'Kabllo';
+    if (/konektor|connector|\bbnc\b|rj ?45|balun|\bjack\b|\bplug\b/.test(t)) return 'Konektorë';
+    if (/ushqyes|adapter|adaptor|power supply|burim|\bups\b|\b12v\b|\bpsu\b|bateri/.test(t)) return 'Ushqyes';
+    if (/monitor|\btv\b|display/.test(t)) return 'Monitor';
+    if (/alarm|sensor|siren|detector|keypad|paradox|\bajax\b|\bdsc\b|satel|risco/.test(t)) return 'Alarm';
+    return '';
+  }
+  function detectType(name, sub, category) {
+    return detectTypeOnce(name + ' ' + sub) || detectTypeOnce(name + ' ' + sub + ' ' + category) || 'Të tjera';
+  }
 
   // ── Firestore REST -> objekt JS (fallback) ────────────────────────────
   function parseValue(v) {
@@ -2078,30 +2514,110 @@ async function generatePDF(d) {
   }
   function toNum(x) {
     if (typeof x === 'number') return x;
-    let s = String(x || '').replace(/\s/g, '');
+    let s = String(x || '').replace(/[^\d.,-]/g, '');
     s = s.replace(/,(?=\d{3}(\D|$))/g, '');
     s = s.replace(',', '.');
     const n = parseFloat(s);
     return isFinite(n) ? n : 0;
   }
+  // Gjen çmimin kudo: emra të ndryshëm fushash, fusha të futura (objekt/listë variantesh)
+  const PRICE_KEYS = ['price', 'cmimi', 'çmimi', 'cmim', 'çmim', 'pret', 'prices', 'salePrice', 'sale_price', 'regularPrice', 'regular_price',
+    'currentPrice', 'current_price', 'finalPrice', 'final_price', 'unitPrice', 'unit_price', 'sellingPrice', 'selling_price',
+    'priceEur', 'price_eur', 'priceEUR', 'priceAll', 'price_all', 'priceLek', 'price_lek', 'pricing', 'amount', 'cost', 'value', 'eur', 'EUR', 'all', 'ALL', 'lek'];
+  function curFromKey(k) { k = String(k).toLowerCase(); if (/all|lek/.test(k) && !/eur/.test(k)) return 'ALL'; if (/eur/.test(k)) return 'EUR'; if (/usd/.test(k)) return 'USD'; return ''; }
+  function findPrice(o, depth, hintCur) {
+    if (o === null || o === undefined || depth > 3) return null;
+    if (typeof o === 'number') return o > 0 ? { v: o, cur: hintCur } : null;
+    if (typeof o === 'string') { const n = toNum(o); return n > 0 ? { v: n, cur: hintCur } : null; }
+    if (Array.isArray(o)) { for (const it of o) { const r = findPrice(it, depth + 1, hintCur); if (r) return r; } return null; }
+    if (typeof o === 'object') {
+      for (const k of PRICE_KEYS) if (k in o) { const r = findPrice(o[k], depth + 1, curFromKey(k) || hintCur); if (r) return r; }
+      for (const k of Object.keys(o)) {
+        if (/pric|cmim|çmim|pret|cost|amount/i.test(k)) { const r = findPrice(o[k], depth + 1, curFromKey(k) || hintCur); if (r) return r; }
+      }
+      for (const k of ['variants', 'options', 'sizes', 'items']) if (k in o) { const r = findPrice(o[k], depth + 1, hintCur); if (r) return r; }
+    }
+    return null;
+  }
+  // ── Foto e produktit (nga shkodratech.al) ──────────────────────────────
+  const SITE_ORIGIN = 'https://shkodratech.al';
+  const IMG_KEYS = ['image', 'imageUrl', 'image_url', 'imageURL', 'img', 'photo', 'photoUrl', 'foto', 'picture', 'thumbnail', 'thumb', 'mainImage', 'cover',
+    'images', 'photos', 'gallery', 'media', 'pictures', 'fotot'];
+  const URL_KEYS = ['url', 'src', 'downloadURL', 'downloadUrl', 'secure_url', 'path', 'large', 'medium', 'small', 'full', 'original', 'thumbnail'];
+  function imgUrl(v) {
+    if (typeof v !== 'string') return '';
+    v = v.trim();
+    if (/^https?:\/\//i.test(v)) return v;
+    if (/^\/\//.test(v)) return 'https:' + v;
+    if (/^\/?[^\s]+\.(jpe?g|png|webp|gif|avif)(\?.*)?$/i.test(v)) return SITE_ORIGIN + (v[0] === '/' ? '' : '/') + v;
+    return '';
+  }
+  function findImage(o, depth) {
+    if (o === null || o === undefined || depth > 3) return '';
+    if (typeof o === 'string') return imgUrl(o);
+    if (Array.isArray(o)) { for (const it of o) { const r = findImage(it, depth + 1); if (r) return r; } return ''; }
+    if (typeof o === 'object') {
+      for (const k of IMG_KEYS.concat(URL_KEYS)) if (k in o) { const r = findImage(o[k], depth + 1); if (r) return r; }
+      for (const k of Object.keys(o)) if (/img|image|photo|foto|pic|thumb/i.test(k)) { const r = findImage(o[k], depth + 1); if (r) return r; }
+    }
+    return '';
+  }
+  // ── Përshkrimi i produktit (për ta shtuar në faturë/preventiv) ─────────
+  const DESC_KEYS = ['description', 'shortDescription', 'short_description', 'pershkrimi', 'përshkrimi', 'pershkrim', 'përshkrim', 'desc',
+    'specs', 'specifications', 'details', 'features', 'summary', 'content', 'body'];
+  function descText(v, depth) {
+    if (v === null || v === undefined || depth > 2) return '';
+    if (typeof v === 'string') return v;
+    if (typeof v === 'number') return String(v);
+    if (Array.isArray(v)) return v.map(x => descText(x, depth + 1)).filter(Boolean).join('\n');
+    if (typeof v === 'object') {
+      if ('label' in v && 'value' in v) return v.label + ': ' + descText(v.value, depth + 1);
+      return Object.keys(v).slice(0, 14).map(k => { const t = descText(v[k], depth + 1); return t && !/\n/.test(t) ? k + ': ' + t : t; }).filter(Boolean).join('\n');
+    }
+    return '';
+  }
+  function cleanDesc(t, name) {
+    t = String(t || '').replace(/<\s*br\s*\/?>|<\/(p|li|div|h\d|tr)>/gi, '\n').replace(/<li[^>]*>/gi, '• ').replace(/<[^>]+>/g, '')
+      .replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'")
+      .replace(/[ \t]+/g, ' ').replace(/\s*\n\s*/g, '\n').trim();
+    if (!t || t.toLowerCase() === String(name || '').toLowerCase()) return '';
+    if (t.length > 380) { t = t.slice(0, 380); const k = Math.max(t.lastIndexOf('\n'), t.lastIndexOf('. ')); if (k > 150) t = t.slice(0, k + 1); t = t.trim() + (/[.!?]$/.test(t) ? '' : '…'); }
+    return t;
+  }
+  function findDesc(p, name) {
+    for (const k of DESC_KEYS) if (k in p) { const t = cleanDesc(descText(p[k], 0), name); if (t) return t; }
+    return '';
+  }
   function normalize(p) {
     const name = String(pick(p, ['name', 'title', 'emri', 'emertimi', 'productName', 'name_sq', 'nameSq', 'name_al', 'nameAl', 'titulli', 'emertim', 'label', 'product_name'])).trim();
     const category = String(pick(p, ['category', 'kategoria', 'cat'])).trim();
+    const sub = String(pick(p, ['subcategory', 'nenkategoria', 'sub_category', 'subCategory'])).trim();
+    const brand = cleanBrand(pick(p, ['brand', 'marka', 'manufacturer'])) || detectBrand(name + ' ' + pick(p, ['model', 'sku']));
+    let type = detectType(name, sub, category);
+    if (type === 'Të tjera' && (sub || category)) type = sub || category;
+    const pr = findPrice(p, 0, '');
+    const image = findImage(p, 0);
+    const desc = findDesc(p, name);
     return {
       id: p.id,
       name: name,
       category: category,
-      price: toNum(pick(p, ['price', 'cmimi', 'çmimi', 'salePrice', 'priceEur', 'price_eur'])),
-      currency: String(pick(p, ['currency', 'monedha']) || SITE_CURRENCY).toUpperCase(),
+      sub: sub,
+      brand: brand,
+      type: type,
+      image: image,
+      desc: desc,
+      price: pr ? pr.v : 0,
+      currency: String(pick(p, ['currency', 'monedha', 'currencyCode']) || (pr && pr.cur) || SITE_CURRENCY).toUpperCase().replace('LEK', 'ALL'),
       hidden: p.hidden === true || p.active === false || p.visible === false,
-      hay: [name, category, pick(p, ['brand', 'marka', 'model', 'sku', 'code', 'kodi', 'subcategory', 'nenkategoria'])].join(' ').toLowerCase()
+      hay: [name, category, brand, type, pick(p, ['brand', 'marka', 'model', 'sku', 'code', 'kodi', 'subcategory', 'nenkategoria'])].join(' ').toLowerCase()
     };
   }
   function esc(s) {
     return String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   }
   function priceText(p) {
-    return p.price > 0 ? (p.price + ' ' + (SYM[p.currency] || p.currency)) : 'pa çmim';
+    return p.price > 0 ? (p.price + ' ' + (SYM[p.currency] || p.currency) + (p.unit === 'metër' ? '/m' : '')) : 'pa çmim';
   }
   function priceFor(p) {
     const to = document.getElementById('monedha').value;       // ALL / EUR / USD
@@ -2115,7 +2631,9 @@ async function generatePDF(d) {
   function setProducts(rawList) {
     const all = rawList.map(normalize);
     const list = all.filter(p => p.name && !p.hidden);
-    lastStats = { total: all.length, noName: all.filter(p => !p.name).length, hidden: all.filter(p => p.name && p.hidden).length };
+    lastStats = { total: all.length, noName: all.filter(p => !p.name).length, hidden: all.filter(p => p.name && p.hidden).length, noPrice: list.filter(p => !(p.price > 0)).length };
+    const np = rawList.find(r => !(findPrice(r, 0, '')));
+    lastNoPriceKeys = np ? Object.keys(np) : [];
     try { console.log('shkodra-products:', lastStats, 'fushat e produktit të parë:', Object.keys(rawList[0] || {})); } catch (e) {}
     list.sort((a, b) => a.name.localeCompare(b.name));
     PRODUCTS = list;
@@ -2179,6 +2697,78 @@ async function generatePDF(d) {
   }
 
   // ── Stilet ────────────────────────────────────────────────────────────
+
+  // ── PUNË DORE, KABLLO, AKSESORË (çmime fikse në Lekë) ─────────────────
+  // Formati: [emri, çmimi në Lekë, njësia]. Shto/ndrysho rreshta lirisht.
+  const PRESET_BRAND = 'Punë & materiale';
+  const PRESET_DEF = {
+    'Punë dore': [['Punë dore', 1000, 'copë'], ['Punë dore', 1500, 'copë'], ['Punë dore', 2000, 'copë'], ['Punë dore', 2500, 'copë']],
+    'Kabllo':    [['Kabllo LAN', 60, 'metër'], ['Kabllo LAN', 100, 'metër'],
+                  ['Kabllo Coax', 60, 'metër'], ['Kabllo Coax', 80, 'metër'], ['Kabllo Coax', 100, 'metër']],
+    'Aksesorë':  [['Konektor DC', 100, 'copë'], ['Konektor BNC', 100, 'copë'], ['Konektor RJ45', 50, 'copë'],
+                  ['Kuti', 200, 'copë'], ['Kuti', 300, 'copë']]
+  };
+  const PRESETS = [];
+  Object.keys(PRESET_DEF).forEach(g => PRESET_DEF[g].forEach(([name, price, unit], i) => PRESETS.push({
+    id: 'preset-' + g + '-' + i, name: name, category: '', sub: '', brand: PRESET_BRAND, type: g, price: price, currency: 'ALL',
+    unit: unit, preset: true, hidden: false, hay: (name + ' ' + g + ' ' + PRESET_BRAND + ' ' + price).toLowerCase()
+  })));
+  function allProducts() { return PRESETS.concat(PRODUCTS); }
+
+  const MOBILE_CSS = `
+#shkodraModal{font-size:16px}
+#shkodraHead{display:flex;gap:8px;padding:10px;border-bottom:1px solid #ddd;background:#f8f9fa;align-items:stretch}
+#shkodraHead button{flex:0 0 auto;min-width:52px;min-height:52px;border:1px solid #bbb;border-radius:12px;background:#fff;font-size:22px;font-weight:700;color:#1e3a5f}
+#shkodraQ{flex:1;min-width:0;min-height:52px;padding:0 14px;font-size:18px;border:1px solid #bbb;border-radius:12px}
+.sk-crumbs{padding:10px 12px}
+.sk-crumbs button{padding:9px 16px;font-size:16px;border-radius:20px;min-height:40px}
+.sk-crumbs span{font-size:18px}
+.sk-grid{gap:12px;padding:12px}
+.sk-tile{min-height:104px;padding:16px 14px;border-radius:16px}
+.sk-tile b{font-size:19px;line-height:1.2}
+.sk-tile small{font-size:14px}
+.sk-tile.all{min-height:68px}
+#shkodraCount{font-size:13px!important;padding:6px 12px!important}
+#shkodraList [data-i]{padding:14px 12px;min-height:76px;gap:12px}
+#shkodraList [data-i] .nm{font-weight:600;font-size:17px;line-height:1.3}
+#shkodraList [data-i] .pr{font-weight:800;font-size:17px;color:#1e3a5f;white-space:nowrap;text-align:right}
+#shkodraList [data-i] .pr small{display:block;font-weight:600;font-size:12px;color:#047857}
+#shkodraList [data-i]{flex-direction:column;align-items:stretch;gap:10px}
+#shkodraList [data-i]:active{background:transparent}
+#shkodraList .sk-top{display:flex;gap:12px;align-items:flex-start}
+#shkodraList .sk-ctl{display:flex;gap:8px;align-items:stretch}
+#shkodraList .sk-qty{display:flex;align-items:stretch;gap:4px;flex:0 0 auto}
+#shkodraList .sk-qty button{width:46px;border:1px solid #cbd5e1;background:#f1f5f9;border-radius:10px;font-size:22px;font-weight:700;color:#1e3a5f;padding:0}
+#shkodraList .sk-qty button:active{background:#dbeafe}
+#shkodraList .sk-qin{width:64px;min-height:48px;text-align:center;font-size:18px;font-weight:700;border:1px solid #cbd5e1;border-radius:10px;padding:0}
+#shkodraList .sk-unit{min-height:48px;font-size:16px;border:1px solid #cbd5e1;border-radius:10px;background:#fff;padding:0 6px}
+#shkodraList .sk-add{flex:1;min-height:48px;border:0;border-radius:12px;background:#1e3a5f;color:#fff;font-size:17px;font-weight:800}
+#shkodraList .sk-add:active{background:#14304f}
+#shkodraList .sk-desc{font-size:13px;color:#6b7280;margin-top:3px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;white-space:pre-line}
+#shkodraOpt{display:flex;align-items:center;gap:8px;padding:8px 12px;font-size:14px;color:#374151;border-bottom:1px solid #eee;background:#fafafa}
+#shkodraOpt input{width:20px;height:20px}
+#shkodraList .sk-img{flex:0 0 72px;width:72px;height:72px;border-radius:12px;object-fit:cover;background:#f1f5f9;border:1px solid #e2e8f0}
+#skLight{position:fixed;inset:0;z-index:2147483647;background:rgba(0,0,0,.88);display:flex;align-items:center;justify-content:center;padding:16px}
+#skLight img{max-width:100%;max-height:100%;border-radius:10px;background:#fff}
+#shkodraList .sk-tag{font-size:12px;padding:1px 8px}
+#shkodraDone{flex:0 0 auto;margin:10px;min-height:58px;border:0;border-radius:14px;background:#0e9f6e;color:#fff;font-size:18px;font-weight:800}
+#shkodraDone:active{background:#047857}
+#shkodraToast{font-size:16px;padding:12px 20px;bottom:90px}
+.qty-wrap{display:flex;align-items:stretch;gap:4px}
+.qty-wrap button{flex:0 0 46px;border:1px solid #cbd5e1;background:#f1f5f9;border-radius:10px;font-size:22px;font-weight:700;color:#1e3a5f;padding:0}
+.qty-wrap button:active{background:#dbeafe}
+.qty-wrap input{min-width:0;flex:1 1 auto;text-align:center}
+@media (max-width:768px){
+  #itemsBody .item-row input,#itemsBody .item-row select{min-height:48px!important;font-size:16px!important}
+  #itemsBody .item-row .desc-input{font-weight:600}
+  #itemsBody .item-row .num-group label{font-size:12px!important}
+  #itemsBody .item-row .item-total{font-size:17px!important;font-weight:800}
+  #itemsBody .item-row .item-row-top .btn{min-width:46px;min-height:46px;font-size:16px!important}
+  #itemsBody .item-row.picked .item-type-group{display:none}
+  #itemsBody .item-row.picked .item-row-top{justify-content:flex-end;margin-bottom:6px}
+  #itemsBody .item-row-numbers{gap:8px!important}
+}
+`;
   function injectStyle() {
     if (document.getElementById('shkodraStyle')) return;
     const st = document.createElement('style');
@@ -2202,9 +2792,31 @@ async function generatePDF(d) {
       '#shkodraList [data-i]:active{background:#eef6ff}' +
       '#shkodraList .plus{flex:0 0 auto;width:30px;height:30px;border-radius:50%;background:#e8f0fe;color:#1e3a5f;' +
         'display:flex;align-items:center;justify-content:center;font-weight:700}' +
+      '#shkodraFilters{border-bottom:1px solid #e5e7eb;background:#fff}'+
+      '.sk-row{display:flex;gap:6px;overflow-x:auto;padding:6px 10px 2px;white-space:nowrap;-webkit-overflow-scrolling:touch;scrollbar-width:none}'+
+      '.sk-row::-webkit-scrollbar{display:none}'+
+      '.sk-lbl{flex:0 0 auto;font-size:11px;font-weight:700;color:#6b7280;align-self:center;width:54px;text-transform:uppercase;letter-spacing:.3px}'+
+      '.sk-chip{flex:0 0 auto;border:1px solid #cbd5e1;background:#fff;color:#111827;border-radius:16px;padding:5px 11px;font-size:13px;line-height:1.2}'+
+      '.sk-chip.on{background:#1e3a5f;border-color:#1e3a5f;color:#fff}'+
+      '.sk-chip i{font-style:normal;opacity:.6;margin-left:5px;font-size:11px}'+
+      '.sk-chip.zero{opacity:.45}'+
+      '#shkodraList .sk-tag{display:inline-block;background:#eef2ff;color:#3730a3;border-radius:8px;padding:0 7px;font-size:11px;font-weight:600;margin-right:4px}'+
+      '#shkodraClear{border:0;background:none;color:#1a56db;font-size:12px;font-weight:600;padding:0 0 0 8px}'+
+      '.sk-crumbs{display:flex;flex-wrap:wrap;align-items:center;gap:4px;padding:8px 12px;font-size:14px}'+
+      '.sk-crumbs button{border:0;background:#e8f0fe;color:#1e3a5f;border-radius:14px;padding:5px 12px;font-weight:600;font-size:13px}'+
+      '.sk-crumbs button.cur{background:#1e3a5f;color:#fff}'+
+      '.sk-crumbs span{color:#9ca3af}'+
+      '.sk-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;padding:12px}'+
+      '.sk-tile{border:1px solid #d1d5db;border-radius:14px;padding:16px 12px;background:#f8fafc;display:flex;flex-direction:column;gap:4px;min-height:78px;justify-content:center}'+
+      '.sk-tile:active{background:#e8f0fe}'+
+      '.sk-tile b{font-size:16px;color:#111827}'+
+      '.sk-tile small{font-size:12px;color:#6b7280}'+
+      '.sk-tile.all{background:#1e3a5f;border-color:#1e3a5f;grid-column:1/-1;min-height:56px}'+
+      '.sk-tile.all b,.sk-tile.all small{color:#fff}'+
       '#shkodraToast{position:absolute;left:50%;bottom:24px;transform:translateX(-50%);background:#111;color:#fff;' +
         'padding:8px 16px;border-radius:20px;font-size:14px;opacity:0;transition:opacity .2s;pointer-events:none;max-width:90%}' +
       '#shkodraToast.show{opacity:.92}';
+    st.textContent += MOBILE_CSS;
     document.head.appendChild(st);
   }
 
@@ -2248,23 +2860,91 @@ async function generatePDF(d) {
     modal.id = 'shkodraModal';
     modal.innerHTML =
       '<div style="display:flex;flex-direction:column;height:100%;">' +
-        '<div style="display:flex;gap:8px;padding:10px;border-bottom:1px solid #ddd;background:#f8f9fa;">' +
-          '<input id="shkodraQ" type="search" placeholder="Kërko produkt (p.sh. hikvision 5mp)..." autocomplete="off" ' +
-                 'style="flex:1;min-width:0;padding:10px;font-size:16px;border:1px solid #bbb;border-radius:8px;">' +
-          '<button id="shkodraX" type="button" style="padding:0 16px;border:1px solid #bbb;border-radius:8px;background:#fff;font-size:18px;">✕</button>' +
+        '<div id="shkodraHead">' +
+          '<button id="shkodraBack" type="button" aria-label="Mbrapsht">←</button>' +
+          '<input id="shkodraQ" type="search" placeholder="Kërko produkt..." autocomplete="off">' +
+          '<button id="shkodraX" type="button" aria-label="Mbyll">✕</button>' +
         '</div>' +
+        '<div id="shkodraFilters"></div>' +
+        '<label id="shkodraOpt"><input type="checkbox" id="shkodraAutoDesc"> Shto edhe përshkrimin e produktit në dokument</label>' +
         '<div id="shkodraCount" style="padding:6px 12px;font-size:12px;color:#666;"></div>' +
         '<div id="shkodraList" style="flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;"></div>' +
+        '<button id="shkodraDone" type="button">✓ Gata</button>' +
       '</div>' +
       '<div id="shkodraToast"></div>';
     document.body.appendChild(modal);
     document.getElementById('shkodraQ').addEventListener('input', e => renderResults(e.target.value));
     document.getElementById('shkodraX').addEventListener('click', closeModal);
+    document.getElementById('shkodraDone').addEventListener('click', closeModal);
+    const ad = document.getElementById('shkodraAutoDesc');
+    ad.checked = localStorage.getItem('sk_autodesc') !== '0';
+    ad.addEventListener('change', () => { try { localStorage.setItem('sk_autodesc', ad.checked ? '1' : '0'); } catch (e) {} });
+    document.getElementById('shkodraBack').addEventListener('click', () => {
+      const q = document.getElementById('shkodraQ');
+      if (q.value) { q.value = ''; renderResults(''); return; }
+      if (fType) { fType = ''; renderResults(''); return; }
+      if (fBrand) { fBrand = ''; renderResults(''); return; }
+      closeModal();
+    });
+    function nav(k, v) {
+      if (k === 'all') { fBrand = ''; fType = ''; }
+      if (k === 'brand') { fBrand = v; fType = ''; }
+      if (k === 'type') { fType = v; }
+      if (k === 'brandonly') { fBrand = v; fType = '*'; }   // tëra produktet e markës
+      if (k === 'everything') { fBrand = ''; fType = '*'; }
+      renderResults(document.getElementById('shkodraQ').value);
+      document.getElementById('shkodraList').scrollTop = 0;
+    }
+    document.getElementById('shkodraFilters').addEventListener('click', e => {
+      const b = e.target.closest('[data-k]'); if (!b) return;
+      nav(b.getAttribute('data-k'), b.getAttribute('data-v') || '');
+    });
+    document.getElementById('shkodraList').addEventListener('click', e => {
+      const t = e.target.closest('[data-nav]'); if (!t) return;
+      nav(t.getAttribute('data-nav'), t.getAttribute('data-v') || '');
+    });
+    document.getElementById('shkodraCount').addEventListener('click', e => {
+      if (e.target.id === 'shkodraClear') {
+        fBrand = fType = '';
+        renderResults(document.getElementById('shkodraQ').value);
+      }
+    });
     document.getElementById('shkodraList').addEventListener('click', e => {
       const el = e.target.closest('[data-i]');
       if (!el) return;
       const p = matches[parseInt(el.getAttribute('data-i'), 10)];
-      if (p) addProduct(p);
+      if (!p) return;
+      const qin = el.querySelector('.sk-qin');
+      const step = e.target.closest('[data-step]');
+      if (step) {
+        const v = Math.max(1, (parseFloat(qin.value) || 0) + parseInt(step.getAttribute('data-step'), 10));
+        qin.value = v; pend(p).qty = v; return;
+      }
+      if (e.target.closest('.sk-add')) {
+        const q = parseFloat(qin.value) > 0 ? parseFloat(qin.value) : 1;
+        const u = el.querySelector('.sk-unit').value;
+        const keep = document.getElementById('shkodraList').scrollTop;
+        pending[p.id] = { qty: 1, unit: p.unit || 'copë' };
+        addProduct(p, q, u);
+        document.getElementById('shkodraList').scrollTop = keep;
+      }
+    });
+    document.getElementById('shkodraList').addEventListener('click', e => {
+      const im = e.target.closest('img.sk-img'); if (!im) return;
+      const box = document.createElement('div'); box.id = 'skLight';
+      box.innerHTML = '<img referrerpolicy="no-referrer" src="' + esc(im.getAttribute('data-full')) + '">';
+      box.addEventListener('click', () => box.remove());
+      document.body.appendChild(box);
+    });
+    document.getElementById('shkodraList').addEventListener('input', e => {
+      const el = e.target.closest('[data-i]'); if (!el) return;
+      const p = matches[parseInt(el.getAttribute('data-i'), 10)]; if (!p) return;
+      if (e.target.classList.contains('sk-qin')) pend(p).qty = parseFloat(e.target.value) || 1;
+    });
+    document.getElementById('shkodraList').addEventListener('change', e => {
+      const el = e.target.closest('[data-i]'); if (!el) return;
+      const p = matches[parseInt(el.getAttribute('data-i'), 10)]; if (!p) return;
+      if (e.target.classList.contains('sk-unit')) pend(p).unit = e.target.value;
     });
     document.addEventListener('keydown', e => {
       if (e.key === 'Escape' && modal.style.display === 'block') closeModal();
@@ -2272,38 +2952,121 @@ async function generatePDF(d) {
   }
   function statsText() {
     if (!lastStats) return '';
-    return ' · DB: ' + lastStats.total + (lastStats.hidden ? ', të fshehura: ' + lastStats.hidden : '') + (lastStats.noName ? ', pa emër: ' + lastStats.noName : '');
+    return ' · DB: ' + lastStats.total + (lastStats.hidden ? ', të fshehura: ' + lastStats.hidden : '') + (lastStats.noName ? ', pa emër: ' + lastStats.noName : '') + (lastStats.noPrice ? ', pa çmim: ' + lastStats.noPrice : '');
   }
   function statusText() {
     if (liveState === 'live') return '🟢 live';
     if (liveState === 'polling') return '🟠 rifreskim';
     return PRODUCTS.length ? '⚪ offline (të ruajtura)' : '⚠ ' + (lastError || 'pa lidhje');
   }
+  const PICK_UNITS = ['copë', 'metër', 'paketë'];
+  const pending = {};   // sasia/njësia e zgjedhur për çdo produkt para se ta shtosh
+  function pend(p) { return pending[p.id] || (pending[p.id] = { qty: 1, unit: p.unit || 'copë' }); }
+  const ALLP = '*';   // fType='*' = "shfaq të gjitha" pa zgjedhur lloj
+  function inScope(p) {
+    return (!fBrand || (p.brand || 'Pa markë') === fBrand) && (!fType || fType === ALLP || p.type === fType);
+  }
+  function countBy(list, f) {
+    const c = {}; list.forEach(p => { const v = f(p); c[v] = (c[v] || 0) + 1; });
+    return Object.keys(c).sort((a, b) => {
+      const ra = /^Pa |^Të tjera$/.test(a) ? 1 : 0, rb = /^Pa |^Të tjera$/.test(b) ? 1 : 0;
+      return ra - rb || c[b] - c[a] || a.localeCompare(b);
+    }).map(k => [k, c[k]]);
+  }
+  function crumbs() {
+    let h = '<div class="sk-crumbs"><button type="button" data-k="all" class="' + (!fBrand && !fType ? 'cur' : '') + '">Të gjitha</button>';
+    if (fBrand) h += '<span>›</span><button type="button" data-k="brand" data-v="' + esc(fBrand) + '" class="' + (!fType ? 'cur' : '') + '">' + esc(fBrand) + '</button>';
+    if (fType && fType !== ALLP) h += '<span>›</span><button type="button" class="cur">' + esc(fType) + '</button>';
+    if (fType === ALLP) h += '<span>›</span><button type="button" class="cur">Të gjitha produktet</button>';
+    return h + '</div>';
+  }
+  function tiles(items, navKey, extra) {
+    return '<div class="sk-grid">' + (extra || '') + items.map(([v, n]) =>
+      '<div class="sk-tile" data-nav="' + navKey + '" data-v="' + esc(v) + '"><b>' + esc(v) + '</b><small>' + n + ' produkte</small></div>').join('') + '</div>';
+  }
+  function cartQty() {
+    const m = {};
+    document.querySelectorAll('#itemsBody .item-row').forEach(r => {
+      const id = r.id.replace('row-', '');
+      const d = document.getElementById('desc-' + id), q = document.getElementById('qty-' + id);
+      if (d && d.value.trim()) m[d.value.trim()] = (m[d.value.trim()] || 0) + (parseFloat(q && q.value) || 0);
+    });
+    return m;
+  }
+  function updateDone() {
+    const b = document.getElementById('shkodraDone'); if (!b) return;
+    const n = Object.keys(cartQty()).length;
+    b.textContent = n ? '✓ Gata · ' + n + (n === 1 ? ' artikull' : ' artikuj') + ' në dokument' : '✓ Gata';
+  }
   function renderResults(q) {
     const list = document.getElementById('shkodraList');
     const count = document.getElementById('shkodraCount');
-    if (!PRODUCTS.length) {
-      matches = [];
+    const filt = document.getElementById('shkodraFilters');
+    const POOL = allProducts();
+    if (!POOL.length) {
+      matches = []; filt.innerHTML = '';
       list.innerHTML = '<div style="padding:16px;color:#666;">' +
         (lastError ? 'Produktet nuk u ngarkuan (' + esc(lastError) + ')' : 'Produktet po ngarkohen...') + '</div>';
       count.textContent = '';
       return;
     }
     const words = (q || '').toLowerCase().split(/\s+/).filter(Boolean);
-    const all = PRODUCTS.filter(p => words.every(w => p.hay.indexOf(w) !== -1));
+    const scoped = POOL.filter(inScope);
+    filt.innerHTML = crumbs();
+    const info = '  ·  ' + statusText() + statsText();
+
+    // Pamja 1 / 2: dosjet (marka, pastaj kategoria) — vetëm kur nuk kërkon me tekst
+    if (!words.length && !(fType)) {
+      matches = [];
+      if (!fBrand) {
+        count.textContent = POOL.length + ' produkte gjithsej' + info;
+        list.innerHTML = tiles(countBy(POOL, p => p.brand || 'Pa markë').sort((x, y) => (y[0] === PRESET_BRAND) - (x[0] === PRESET_BRAND)), 'brand',
+          '<div class="sk-tile all" data-nav="everything"><b>Shfaq të gjitha produktet</b><small>' + POOL.length + ' produkte</small></div>');
+      } else {
+        count.textContent = scoped.length + ' produkte nga ' + fBrand + info;
+        list.innerHTML = tiles(countBy(scoped, p => p.type), 'type',
+          '<div class="sk-tile all" data-nav="brandonly" data-v="' + esc(fBrand) + '"><b>Të gjitha të ' + esc(fBrand) + '</b><small>' + scoped.length + ' produkte</small></div>');
+      }
+      return;
+    }
+
+    // Pamja 3: lista e produkteve (me kërkim ose pasi zgjodhe kategorinë)
+    const all = scoped.filter(p => words.every(w => p.hay.indexOf(w) !== -1));
     matches = all.slice(0, MAX_RESULTS);
-    count.textContent = (all.length > MAX_RESULTS
+    const active = fBrand || fType;
+    count.innerHTML = esc((all.length > MAX_RESULTS
       ? 'Po shfaqen ' + MAX_RESULTS + ' nga ' + all.length + ' — shkruaj më shumë'
-      : all.length + ' produkte') + '  ·  ' + statusText() + statsText();
-    list.innerHTML = matches.length ? matches.map((p, i) =>
+      : all.length + ' produkte') + info) +
+      (active ? '<button type="button" id="shkodraClear">✕ pastro filtrat</button>' : '');
+    const cart = cartQty();
+    const anyImg = matches.some(x => x.image);
+    updateDone();
+    const warn = (lastStats && lastStats.noPrice > PRODUCTS.length * 0.3 && lastNoPriceKeys.length)
+      ? '<div style="padding:8px 12px;background:#fffbeb;color:#92400e;font-size:12px;">⚠ Shumë produkte pa çmim. Fushat e një produkti: <b>' + esc(lastNoPriceKeys.join(', ')) + '</b></div>' : '';
+    const keepTop = list.scrollTop;
+    list.innerHTML = warn + (matches.length ? matches.map((p, i) =>
       '<div data-i="' + i + '">' +
-        '<div style="flex:1;min-width:0;">' +
-          '<div style="font-weight:600;font-size:15px;">' + esc(p.name) + '</div>' +
-          '<div style="font-size:13px;color:#666;">' + esc(p.category) + (p.category ? ' · ' : '') + esc(priceText(p)) + '</div>' +
+        '<div class="sk-top">' +
+          (anyImg ? (p.image ? '<img class="sk-img" loading="lazy" referrerpolicy="no-referrer" data-full="' + esc(p.image) + '" src="' + esc(p.image) + '" onerror="this.outerHTML=\'<div class=sk-img></div>\'">' : '<div class="sk-img"></div>') : '') +
+          '<div style="flex:1;min-width:0;">' +
+            '<div class="nm">' + esc(p.name) + '</div>' +
+            '<div>' +
+              (p.brand ? '<span class="sk-tag">' + esc(p.brand) + '</span>' : '') +
+              (p.type && p.type !== 'Të tjera' ? '<span class="sk-tag">' + esc(p.type) + '</span>' : '') +
+            '</div>' +
+            (p.desc ? '<div class="sk-desc">' + esc(p.desc) + '</div>' : '') +
+          '</div>' +
+          '<div class="pr">' + esc(priceText(p)) + (cart[p.name] ? '<small>në dokument ×' + cart[p.name] + '</small>' : '') + '</div>' +
         '</div>' +
-        '<div class="plus">+</div>' +
+        '<div class="sk-ctl">' +
+          '<div class="sk-qty"><button type="button" data-step="-1">−</button>' +
+            '<input class="sk-qin" type="number" inputmode="decimal" min="0" step="any" value="' + pend(p).qty + '">' +
+            '<button type="button" data-step="1">+</button></div>' +
+          '<select class="sk-unit">' + PICK_UNITS.map(u => '<option' + (u === pend(p).unit ? ' selected' : '') + '>' + u + '</option>').join('') + '</select>' +
+          '<button type="button" class="sk-add">＋ Shto</button>' +
+        '</div>' +
       '</div>').join('')
-      : '<div style="padding:16px;color:#666;">Asnjë produkt nuk përputhet.</div>';
+      : '<div style="padding:16px;color:#666;">Asnjë produkt nuk përputhet.</div>');
   }
   function openModal() {
     buildModal();
@@ -2341,18 +3104,21 @@ async function generatePDF(d) {
   function rowIds() {
     return [...document.querySelectorAll('#itemsBody .item-row')].map(r => r.id.replace('row-', ''));
   }
-  function addProduct(p) {
+  function addProduct(p, qty, unitSel) {
+    qty = qty > 0 ? qty : 1;
     const price = priceFor(p);
     const ids = rowIds();
 
     // 1) Nëse produkti është tashmë në listë -> rrit sasinë
     for (const id of ids) {
       const d = document.getElementById('desc-' + id);
-      if (d && d.value.trim() === p.name) {
+      const prEl = document.getElementById('price-' + id);
+      if (d && d.value.trim() === p.name && (!p.preset || (prEl && Math.abs((parseFloat(prEl.value) || 0) - price) < 0.01))) {
         const q = document.getElementById('qty-' + id);
-        q.value = (parseFloat(q.value) || 0) + 1;
+        q.value = (parseFloat(q.value) || 0) + qty;
         calcRowTotal(id); calcTotals();
         toast('✓ ' + p.name + ' — sasia ' + q.value);
+        renderResults(document.getElementById('shkodraQ').value);
         return;
       }
     }
@@ -2365,21 +3131,37 @@ async function generatePDF(d) {
       if (d && !d.value.trim() && !(parseFloat(pr.value) > 0)) id = last;
     }
     if (id === null) {
-      addRow(p.name, 1, 'copë', price, 'Tjeter');
+      addRow(p.name, qty, unitSel || p.unit || 'copë', price, 'Tjeter');
       id = String(rowCounter);
     } else {
       document.getElementById('desc-' + id).value = p.name;
       document.getElementById('price-' + id).value = price;
       const unit = document.getElementById('unit-' + id);
-      if (unit && !unit.value) unit.value = 'copë';
+      if (unit) unit.value = unitSel || p.unit || 'copë';
+      const qEl = document.getElementById('qty-' + id); if (qEl) qEl.value = qty;
       const type = document.getElementById('type-' + id);
       if (type && type.value !== 'Tjeter') { type.value = 'Tjeter'; if (typeof onTypeChange === 'function') onTypeChange(id); document.getElementById('desc-' + id).value = p.name; }
     }
+    const rowEl = document.getElementById('row-' + id); if (rowEl) rowEl.classList.add('picked');
+    if (p.desc && localStorage.getItem('sk_autodesc') !== '0' && typeof setRowNote === 'function') setRowNote(id, p.desc);
     calcRowTotal(id);
     calcTotals();
-    toast('✓ U shtua: ' + p.name);
+    toast('✓ U shtua: ' + qty + ' ' + (unitSel || p.unit || 'copë') + ' ' + p.name);
+    renderResults(document.getElementById('shkodraQ').value);
   }
 
+  function decorateRows() {
+    document.querySelectorAll('#itemsBody .item-row').forEach(r => {
+      const id = r.id.replace('row-', '');
+      const qi = document.getElementById('qty-' + id);
+      if (!qi || qi.parentNode.classList.contains('qty-wrap')) return;
+      const w = document.createElement('div'); w.className = 'qty-wrap';
+      const mk = (t, d) => { const b = document.createElement('button'); b.type = 'button'; b.textContent = t;
+        b.addEventListener('click', () => { qi.value = Math.max(0, (parseFloat(qi.value) || 0) + d); calcRowTotal(id); calcTotals(); }); return b; };
+      qi.parentNode.insertBefore(w, qi);
+      w.appendChild(mk('−', -1)); w.appendChild(qi); w.appendChild(mk('+', 1));
+    });
+  }
   // ── Nisja ─────────────────────────────────────────────────────────────
   function init() {
     injectStyle();
@@ -2392,6 +3174,8 @@ async function generatePDF(d) {
       if (c.length) { PRODUCTS = c; }
     } catch (e) {}
     startLive();
+    const ib = document.getElementById('itemsBody');
+    if (ib) { decorateRows(); new MutationObserver(decorateRows).observe(ib, { childList: true }); }
     // Rifreskim kur kthehesh në aplikacion (telefoni)
     document.addEventListener('visibilitychange', () => {
       if (document.visibilityState === 'visible' && liveState !== 'live') refreshREST(false);
