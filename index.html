@@ -1574,12 +1574,12 @@ function buildBackupModal() {
         '<label class="form-label">Repo (përdorues/emri) — <b>publike</b>, e re</label>' +
         '<input id="pnRepo" class="form-control mb-2" placeholder="p.sh. ari-app2425/arkiva-sync" autocapitalize="off" autocomplete="off">' +
         '<label class="form-label">Token GitHub (Fine-grained, vetëm për këtë repo)</label>' +
-        '<input id="pnToken" type="password" class="form-control mb-2" placeholder="github_pat_..." autocomplete="off">' +
+        '<div class="input-group mb-2"><input id="pnToken" type="password" class="form-control" placeholder="github_pat_..." autocomplete="off"><button type="button" class="btn btn-outline-secondary" data-eye="pnToken" title="Shfaq/fshih"><i class="fa-solid fa-eye"></i></button></div>' +
         '<label class="form-label">PIN / kod sekret (min. 6 karaktere)</label>' +
-        '<input id="pnPin" type="password" class="form-control mb-1" autocomplete="new-password">' +
+        '<div class="input-group mb-1"><input id="pnPin" type="password" class="form-control" autocomplete="new-password"><button type="button" class="btn btn-outline-secondary" data-eye="pnPin" title="Shfaq/fshih"><i class="fa-solid fa-eye"></i></button></div>' +
         '<div class="small text-muted mb-2">Sa më i gjatë, aq më i sigurt: repo është publike, ndaj fuqia e PIN-it është e vetmja mbrojtje. Rekomandohen 8+ karaktere me shkronja e numra.</div>' +
         '<details class="small mb-2"><summary>Si e krijoj tokenin?</summary><ol class="ps-3 mt-2 mb-0">' +
-          '<li>GitHub → New repository → emër p.sh. <i>arkiva-sync</i>, <b>Public</b>, shëno “Add a README”.</li>' +
+          '<li>GitHub → New repository → emër p.sh. <i>arkiva-sync</i>, zgjidh <b>Public</b> (jo Private), shëno “Add a README”. Nëse repo-ja është Private, aplikacioni nuk e pranon.</li>' +
           '<li>Settings → Developer settings → Fine-grained tokens → Generate new token.</li>' +
           '<li>Repository access: <i>Only select repositories</i> → vetëm atë repo.</li>' +
           '<li>Permissions → Repository → <b>Contents: Read and write</b>.</li>' +
@@ -1591,13 +1591,13 @@ function buildBackupModal() {
         '<label class="form-label">Repo (përdorues/emri)</label>' +
         '<input id="pcRepo" class="form-control mb-2" placeholder="p.sh. ari-app2425/arkiva-sync" autocapitalize="off" autocomplete="off">' +
         '<label class="form-label">PIN / kod sekret</label>' +
-        '<input id="pcPin" type="password" class="form-control mb-2" autocomplete="current-password">' +
+        '<div class="input-group mb-2"><input id="pcPin" type="password" class="form-control" autocomplete="current-password"><button type="button" class="btn btn-outline-secondary" data-eye="pcPin" title="Shfaq/fshih"><i class="fa-solid fa-eye"></i></button></div>' +
         '<button type="button" class="btn btn-primary w-100" id="pcConnect">Lidhu</button>' +
       '</div>' +
       '<div id="pinMsg" class="small mt-2"></div>' +
       '<hr><details class="small"><summary>Mënyra e vjetër (token në çdo pajisje, repo private)</summary><div class="mt-2">' +
         '<input id="ghRepo" class="form-control mb-2" placeholder="përdorues/repo" autocapitalize="off" autocomplete="off">' +
-        '<input id="ghToken" type="password" class="form-control mb-2" placeholder="github_pat_..." autocomplete="off">' +
+        '<div class="input-group mb-2"><input id="ghToken" type="password" class="form-control" placeholder="github_pat_..." autocomplete="off"><button type="button" class="btn btn-outline-secondary" data-eye="ghToken" title="Shfaq/fshih"><i class="fa-solid fa-eye"></i></button></div>' +
         '<div class="row g-2 mb-2"><div class="col-6"><input id="ghBranch" class="form-control" value="main"></div>' +
         '<div class="col-6"><input id="ghPath" class="form-control" value="arkiva.json"></div></div>' +
         '<button type="button" class="btn btn-sm btn-outline-primary" id="ghSave">Ruaj dhe testo</button>' +
@@ -1613,6 +1613,11 @@ function buildBackupModal() {
   document.body.appendChild(wrap.firstChild);
 
   const $ = id => document.getElementById(id);
+  document.querySelectorAll('#backupModal [data-eye]').forEach(b => b.addEventListener('click', () => {
+    const inp = $(b.dataset.eye), show = inp.type === 'password';
+    inp.type = show ? 'text' : 'password';
+    b.innerHTML = '<i class="fa-solid ' + (show ? 'fa-eye-slash' : 'fa-eye') + '"></i>';
+  }));
   const showPane = which => {
     $('pinPaneA').classList.toggle('d-none', which !== 'A');
     $('pinPaneB').classList.toggle('d-none', which !== 'B');
