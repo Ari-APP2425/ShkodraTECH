@@ -1323,8 +1323,8 @@ function ghReady() { const c = ghCfg(); return !!(c && c.token && c.repo); }
 const toB64 = s => btoa(unescape(encodeURIComponent(s)));
 const fromB64 = s => decodeURIComponent(escape(atob(s.replace(/\s/g, ''))));
 
-async function ghFetch(path, opts = {}) {
-  const c = ghCfg();
+async function ghFetch(path, opts = {}, cfg) {
+  const c = cfg || ghCfg();
   const res = await fetch('https://api.github.com/repos/' + c.repo + path, {
     ...opts,
     headers: {
@@ -1344,6 +1344,35 @@ async function ghErr(res) {
   if (res.status === 404) return 'Repo/dega/skedari nuk u gjet (kontrollo emrin e repo-s dhe tokenin)';
   return 'GitHub ' + res.status + (m ? ': ' + m : '');
 }
+
+// ── Kriptim me PIN (AES-GCM + PBKDF2) ─────────────────────────────────
+function u8ToB64(u8) { let s = ''; const CH = 0x8000; for (let i = 0; i < u8.length; i += CH) s += String.fromCharCode.apply(null, u8.subarray(i, i + CH)); return btoa(s); }
+function b64ToU8(b) { const s = atob(b); const u = new Uint8Array(s.length); for (let i = 0; i < s.length; i++) u[i] = s.charCodeAt(i); return u; }
+const _keyCache = {};
+async function deriveKey(pin, saltB64) {
+  if (!(window.crypto && crypto.subtle)) throw new Error('Ky shfletues nuk mbështet kriptimin (duhet HTTPS)');
+  const ck = pin + '|' + saltB64;
+  if (_keyCache[ck]) return _keyCache[ck];
+  const km = await crypto.subtle.importKey('raw', new TextEncoder().encode(pin), 'PBKDF2', false, ['deriveKey']);
+  const key = await crypto.subtle.deriveKey({ name: 'PBKDF2', salt: b64ToU8(saltB64), iterations: 600000, hash: 'SHA-256' },
+    km, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
+  return (_keyCache[ck] = key);
+}
+async function encJSON(obj, pin, saltB64) {
+  const key = await deriveKey(pin, saltB64);
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const ct = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, new TextEncoder().encode(JSON.stringify(obj))));
+  return { enc: 1, v: 1, salt: saltB64, iv: u8ToB64(iv), ct: u8ToB64(ct) };
+}
+async function decJSON(env, pin) {
+  const key = await deriveKey(pin, env.salt);
+  try {
+    const pt = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: b64ToU8(env.iv) }, key, b64ToU8(env.ct));
+    return JSON.parse(new TextDecoder().decode(pt));
+  } catch (e) { throw new Error('PIN i gabuar'); }
+}
+const PIN_CFG_FILE = 'sync-config.enc.json';
+
 async function ghGetRemote() {
   const c = ghCfg();
   const q = '?ref=' + encodeURIComponent(c.branch || 'main');
@@ -1363,7 +1392,12 @@ async function ghGetRemote() {
       { headers: { 'Accept': 'application/vnd.github.raw+json' } });
     text = await raw.text();
   }
-  return { sha: j.sha, data: JSON.parse(text) };
+  let data = JSON.parse(text);
+  if (data && data.enc) {
+    if (!c.pin) throw new Error('Kopja në GitHub është e kriptuar — lidhu me PIN');
+    data = await decJSON(data, c.pin);
+  }
+  return { sha: j.sha, data };
 }
 
 let _syncing = false, _syncTimer = null;
@@ -1383,9 +1417,11 @@ async function syncGithub(silent) {
       let uploaded = false;
       if (!remote || sig(local) !== sig(remote.data)) {
         const c = ghCfg();
+        const payload = c.pin ? JSON.stringify(await encJSON(local, c.pin, c.salt))
+                              : JSON.stringify(local, null, 2);
         const body = {
           message: 'Backup arkiva ' + new Date().toISOString(),
-          content: toB64(JSON.stringify(local, null, 2)),
+          content: toB64(payload),
           branch: c.branch || 'main'
         };
         if (remote) body.sha = remote.sha;
@@ -1419,6 +1455,53 @@ function scheduleAutoSync() {
 let _syncState = 'idle';
 function setSyncState(s) { _syncState = s; renderBackupPanel(); }
 
+
+// ── Sinkronizim me PIN ────────────────────────────────────────────────
+function ghPathUrl(p) { return '/contents/' + p.split('/').map(encodeURIComponent).join('/'); }
+function cleanRepo(r) { return (r || '').trim().replace(/^https?:\/\/github\.com\//, '').replace(/\.git$/, '').replace(/\/$/, ''); }
+
+// Pajisja e parë: ngarkon konfigurimin e kriptuar (token) në repo, e ruan lokalisht dhe sinkronizon.
+async function pinSetupFirst(repo, token, pin) {
+  const tmp = { repo, token };
+  const rr = await ghFetch('', {}, tmp);
+  if (!rr.ok) throw new Error(await ghErr(rr));
+  const info = await rr.json();
+  if (info.private) throw new Error('Repo duhet të jetë PUBLIKE (të dhënat ruhen të kriptuara). Krijo një repo të re publike.');
+  const branch = info.default_branch || 'main';
+  tmp.branch = branch;
+  // a ekziston konfigurimi?
+  let salt, sha;
+  const ex = await ghFetch(ghPathUrl(PIN_CFG_FILE) + '?ref=' + encodeURIComponent(branch), {}, tmp);
+  if (ex.ok) {
+    const j = await ex.json();
+    const env = JSON.parse(fromB64(j.content));
+    await decJSON(env, pin);               // hedh "PIN i gabuar" nëse nuk përputhet
+    salt = env.salt; sha = j.sha;
+  } else if (ex.status === 404) {
+    salt = u8ToB64(crypto.getRandomValues(new Uint8Array(16)));
+  } else throw new Error(await ghErr(ex));
+  const cfgEnv = await encJSON({ token, branch, path: 'arkiva.enc.json' }, pin, salt);
+  const body = { message: 'Konfigurim sinkronizimi', content: toB64(JSON.stringify(cfgEnv)), branch };
+  if (sha) body.sha = sha;
+  const put = await ghFetch(ghPathUrl(PIN_CFG_FILE), { method: 'PUT', body: JSON.stringify(body) }, tmp);
+  if (!put.ok) throw new Error(await ghErr(put));
+  localStorage.setItem('gh_backup_cfg', JSON.stringify({ repo, token, branch, path: 'arkiva.enc.json', pin, salt }));
+  return syncGithub(true);
+}
+
+// Pajisje tjetër: merr konfigurimin e kriptuar nga repo dhe e hap me PIN.
+async function pinConnect(repo, pin) {
+  const res = await fetch('https://api.github.com/repos/' + repo + ghPathUrl(PIN_CFG_FILE), {
+    headers: { 'Accept': 'application/vnd.github.raw+json' }
+  });
+  if (res.status === 404) throw new Error('Nuk u gjet konfigurimi. Kontrollo emrin e repo-s dhe që është konfiguruar në pajisjen e parë.');
+  if (!res.ok) throw new Error('GitHub ' + res.status);
+  const env = JSON.parse(await res.text());
+  const cfg = await decJSON(env, pin);
+  localStorage.setItem('gh_backup_cfg', JSON.stringify({ repo, token: cfg.token, branch: cfg.branch || 'main', path: cfg.path || 'arkiva.enc.json', pin, salt: env.salt }));
+  return syncGithub(true);
+}
+
 // ── Import nga Supabase (e vjetra) ────────────────────────────────────
 async function importFromSupabase() {
   const res = await fetch(SUPA_URL + '/rest/v1/invoices?order=created_at.desc', { headers: SUPA_HEADERS });
@@ -1449,13 +1532,13 @@ async function renderBackupPanel() {
   else if (ghReady() && ghError) { status = '<i class="fa-solid fa-triangle-exclamation me-1"></i>GitHub: ' + ghError; cls = 'bk-warn'; }
   else if (ghReady() && lastGh) { status = '<i class="fa-solid fa-circle-check me-1"></i>Kopja në GitHub: ' + fmtAgo(lastGh); cls = 'bk-ok'; }
   else if (ghReady()) { status = 'GitHub i lidhur — ende pa sinkronizim'; cls = 'bk-info'; }
-  else if (lastFile) { status = '<i class="fa-solid fa-circle-check me-1"></i>Skedari i fundit u shkarkua: ' + fmtAgo(lastFile) + ' · GitHub nuk është lidhur'; cls = 'bk-info'; }
-  else { status = '<i class="fa-solid fa-triangle-exclamation me-1"></i>Nuk ke asnjë kopje rezervë. Lidh GitHub ose shkarko skedarin.'; cls = 'bk-warn'; }
+  else if (lastFile) { status = '<i class="fa-solid fa-circle-check me-1"></i>Skedari i fundit u shkarkua: ' + fmtAgo(lastFile) + ' · sinkronizimi nuk është aktivizuar'; cls = 'bk-info'; }
+  else { status = '<i class="fa-solid fa-triangle-exclamation me-1"></i>Nuk ke asnjë kopje rezervë. Aktivizo sinkronizimin ose shkarko skedarin.'; cls = 'bk-warn'; }
   el.innerHTML =
     '<div class="bk-card ' + cls + '">' +
       '<div class="bk-status">' + status + '</div>' +
       '<div class="bk-actions">' +
-        '<button type="button" class="btn btn-sm btn-primary" onclick="syncGithub(false)"><i class="fa-brands fa-github me-1"></i>Sinkronizo</button>' +
+        '<button type="button" class="btn btn-sm btn-primary" onclick="syncGithub(false)"><i class="fa-solid fa-rotate me-1"></i>Sinkronizo</button>' +
         '<button type="button" class="btn btn-sm btn-outline-secondary" onclick="openBackupModal()"><i class="fa-solid fa-gear me-1"></i>Cilësimet</button>' +
         '<button type="button" class="btn btn-sm btn-outline-secondary" onclick="exportBackupFile()"><i class="fa-solid fa-download me-1"></i>Eksporto</button>' +
         '<button type="button" class="btn btn-sm btn-outline-secondary" onclick="document.getElementById(\'bkFile\').click()"><i class="fa-solid fa-upload me-1"></i>Importo</button>' +
@@ -1478,24 +1561,47 @@ function buildBackupModal() {
   const wrap = document.createElement('div');
   wrap.innerHTML =
   '<div class="modal fade" id="backupModal" tabindex="-1"><div class="modal-dialog modal-dialog-scrollable"><div class="modal-content">' +
-    '<div class="modal-header py-2"><h6 class="modal-title mb-0"><i class="fa-brands fa-github me-2"></i>Kopje rezervë në GitHub</h6>' +
+    '<div class="modal-header py-2"><h6 class="modal-title mb-0"><i class="fa-solid fa-rotate me-2"></i>Sinkronizim me PIN</h6>' +
     '<button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>' +
     '<div class="modal-body">' +
-      '<p class="small text-muted mb-3">Dokumentet ruhen në këtë pajisje. Këtu e lidh me një repo <b>private</b> në GitHub, ' +
-      'ku shkruhet automatikisht një skedar JSON sa herë ruan ose fshin diçka. Kështu s\'humbet gjë edhe nëse ndërron telefon ose pastron shfletuesin.</p>' +
-      '<label class="form-label">Repo (përdorues/emri)</label>' +
-      '<input id="ghRepo" class="form-control mb-2" placeholder="p.sh. shkodratech/arkiva-backup" autocapitalize="off" autocomplete="off">' +
-      '<label class="form-label">Token (Fine-grained, vetëm për këtë repo)</label>' +
-      '<input id="ghToken" type="password" class="form-control mb-2" placeholder="github_pat_..." autocomplete="off">' +
-      '<div class="row g-2 mb-2"><div class="col-6"><label class="form-label">Dega</label><input id="ghBranch" class="form-control" value="main"></div>' +
-      '<div class="col-6"><label class="form-label">Skedari</label><input id="ghPath" class="form-control" value="arkiva.json"></div></div>' +
-      '<details class="small mb-2"><summary>Si e krijoj tokenin?</summary><ol class="ps-3 mt-2 mb-0">' +
-        '<li>Krijo një repo të re <b>private</b> në GitHub (p.sh. <i>arkiva-backup</i>) me një README, që të ekzistojë dega <i>main</i>.</li>' +
-        '<li>GitHub → Settings → Developer settings → Fine-grained tokens → Generate new token.</li>' +
-        '<li>Repository access: <i>Only select repositories</i> → zgjidh vetëm atë repo.</li>' +
-        '<li>Permissions → Repository → <b>Contents: Read and write</b>.</li>' +
-        '<li>Kopjo tokenin dhe ngjite më sipër. Ruhet vetëm në këtë pajisje.</li></ol></details>' +
-      '<div id="ghMsg" class="small"></div>' +
+      '<div id="pinState" class="small mb-3"></div>' +
+      '<div class="btn-group w-100 mb-3" role="group">' +
+        '<button type="button" class="btn btn-sm btn-outline-primary active" id="pinTabA">Pajisja e parë</button>' +
+        '<button type="button" class="btn btn-sm btn-outline-primary" id="pinTabB">Lidh pajisje tjetër</button>' +
+      '</div>' +
+      '<div id="pinPaneA">' +
+        '<p class="small text-muted">Bëhet një herë. Të dhënat ruhen në GitHub <b>të kriptuara</b> me PIN-in tënd, dhe pajisjet e tjera lidhen vetëm me repo + PIN.</p>' +
+        '<label class="form-label">Repo (përdorues/emri) — <b>publike</b>, e re</label>' +
+        '<input id="pnRepo" class="form-control mb-2" placeholder="p.sh. ari-app2425/arkiva-sync" autocapitalize="off" autocomplete="off">' +
+        '<label class="form-label">Token GitHub (Fine-grained, vetëm për këtë repo)</label>' +
+        '<input id="pnToken" type="password" class="form-control mb-2" placeholder="github_pat_..." autocomplete="off">' +
+        '<label class="form-label">PIN / kod sekret (min. 6 karaktere)</label>' +
+        '<input id="pnPin" type="password" class="form-control mb-1" autocomplete="new-password">' +
+        '<div class="small text-muted mb-2">Sa më i gjatë, aq më i sigurt: repo është publike, ndaj fuqia e PIN-it është e vetmja mbrojtje. Rekomandohen 8+ karaktere me shkronja e numra.</div>' +
+        '<details class="small mb-2"><summary>Si e krijoj tokenin?</summary><ol class="ps-3 mt-2 mb-0">' +
+          '<li>GitHub → New repository → emër p.sh. <i>arkiva-sync</i>, <b>Public</b>, shëno “Add a README”.</li>' +
+          '<li>Settings → Developer settings → Fine-grained tokens → Generate new token.</li>' +
+          '<li>Repository access: <i>Only select repositories</i> → vetëm atë repo.</li>' +
+          '<li>Permissions → Repository → <b>Contents: Read and write</b>.</li>' +
+          '<li>Kopjoje tokenin këtu. Nëse skadon, përsërite këtë hap me të njëjtin PIN.</li></ol></details>' +
+        '<button type="button" class="btn btn-primary w-100" id="pnSetup">Aktivizo sinkronizimin</button>' +
+      '</div>' +
+      '<div id="pinPaneB" class="d-none">' +
+        '<p class="small text-muted">Në telefon/kompjuter tjetër: shkruaj repo-n dhe PIN-in.</p>' +
+        '<label class="form-label">Repo (përdorues/emri)</label>' +
+        '<input id="pcRepo" class="form-control mb-2" placeholder="p.sh. ari-app2425/arkiva-sync" autocapitalize="off" autocomplete="off">' +
+        '<label class="form-label">PIN / kod sekret</label>' +
+        '<input id="pcPin" type="password" class="form-control mb-2" autocomplete="current-password">' +
+        '<button type="button" class="btn btn-primary w-100" id="pcConnect">Lidhu</button>' +
+      '</div>' +
+      '<div id="pinMsg" class="small mt-2"></div>' +
+      '<hr><details class="small"><summary>Mënyra e vjetër (token në çdo pajisje, repo private)</summary><div class="mt-2">' +
+        '<input id="ghRepo" class="form-control mb-2" placeholder="përdorues/repo" autocapitalize="off" autocomplete="off">' +
+        '<input id="ghToken" type="password" class="form-control mb-2" placeholder="github_pat_..." autocomplete="off">' +
+        '<div class="row g-2 mb-2"><div class="col-6"><input id="ghBranch" class="form-control" value="main"></div>' +
+        '<div class="col-6"><input id="ghPath" class="form-control" value="arkiva.json"></div></div>' +
+        '<button type="button" class="btn btn-sm btn-outline-primary" id="ghSave">Ruaj dhe testo</button>' +
+        '<div id="ghMsg" class="small mt-2"></div></div></details>' +
       '<hr><div class="small fw-semibold mb-2">Dokumente të vjetra</div>' +
       '<button type="button" class="btn btn-sm btn-outline-secondary" id="supaImportBtn"><i class="fa-solid fa-cloud-arrow-down me-1"></i>Importo nga Supabase (një herë)</button>' +
       '<div id="supaMsg" class="small mt-2"></div>' +
@@ -1503,17 +1609,50 @@ function buildBackupModal() {
     '<div class="modal-footer py-2">' +
       '<button type="button" class="btn btn-sm btn-outline-danger me-auto" id="ghDisconnect">Shkëput</button>' +
       '<button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Mbyll</button>' +
-      '<button type="button" class="btn btn-sm btn-primary" id="ghSave">Ruaj dhe testo</button>' +
     '</div></div></div></div>';
   document.body.appendChild(wrap.firstChild);
 
-  document.getElementById('ghSave').addEventListener('click', async () => {
-    const msg = document.getElementById('ghMsg');
+  const $ = id => document.getElementById(id);
+  const showPane = which => {
+    $('pinPaneA').classList.toggle('d-none', which !== 'A');
+    $('pinPaneB').classList.toggle('d-none', which !== 'B');
+    $('pinTabA').classList.toggle('active', which === 'A');
+    $('pinTabB').classList.toggle('active', which === 'B');
+  };
+  $('pinTabA').addEventListener('click', () => showPane('A'));
+  $('pinTabB').addEventListener('click', () => showPane('B'));
+  const setMsg = (cls, txt) => { const m = $('pinMsg'); m.className = 'small mt-2 ' + cls; m.textContent = txt; };
+  const finish = async r => {
+    const err = await metaGet('lastGithubError', '');
+    if (r && !err) {
+      setMsg('text-success', '✓ Sinkronizimi është aktiv.' + (r.added || r.updated ? ' U marrën ' + (r.added + r.updated) + ' dokumente.' : ''));
+      renderArkiva(); updateArkivaBadge(); refreshPinState();
+    } else setMsg('text-danger', '✗ ' + (err || 'Dështoi'));
+  };
+
+  $('pnSetup').addEventListener('click', async () => {
+    const repo = cleanRepo($('pnRepo').value), token = $('pnToken').value.trim(), pin = $('pnPin').value;
+    if (!/^[^/\s]+\/[^/\s]+$/.test(repo) || !token) return setMsg('text-danger', 'Plotëso repo-n (përdorues/emri) dhe tokenin.');
+    if (pin.length < 6) return setMsg('text-danger', 'PIN-i duhet të ketë të paktën 6 karaktere.');
+    setMsg('text-muted', 'Po konfigurohet (kriptimi mund të zgjasë 1–2 sekonda)...');
+    try { await finish(await pinSetupFirst(repo, token, pin)); }
+    catch (e) { setMsg('text-danger', '✗ ' + (e.message || e)); }
+  });
+  $('pcConnect').addEventListener('click', async () => {
+    const repo = cleanRepo($('pcRepo').value), pin = $('pcPin').value;
+    if (!/^[^/\s]+\/[^/\s]+$/.test(repo) || !pin) return setMsg('text-danger', 'Plotëso repo-n dhe PIN-in.');
+    setMsg('text-muted', 'Po lidhet...');
+    try { await finish(await pinConnect(repo, pin)); }
+    catch (e) { setMsg('text-danger', '✗ ' + (e.message || e)); }
+  });
+
+  $('ghSave').addEventListener('click', async () => {
+    const msg = $('ghMsg');
     const cfg = {
-      repo: document.getElementById('ghRepo').value.trim().replace(/^https?:\/\/github\.com\//, '').replace(/\.git$/, '').replace(/\/$/, ''),
-      token: document.getElementById('ghToken').value.trim(),
-      branch: document.getElementById('ghBranch').value.trim() || 'main',
-      path: document.getElementById('ghPath').value.trim() || 'arkiva.json'
+      repo: cleanRepo($('ghRepo').value),
+      token: $('ghToken').value.trim(),
+      branch: $('ghBranch').value.trim() || 'main',
+      path: $('ghPath').value.trim() || 'arkiva.json'
     };
     if (!/^[^/\s]+\/[^/\s]+$/.test(cfg.repo) || !cfg.token) {
       msg.className = 'small text-danger'; msg.textContent = 'Plotëso repo-n (përdorues/emri) dhe tokenin.'; return;
@@ -1522,38 +1661,42 @@ function buildBackupModal() {
     msg.className = 'small text-muted'; msg.textContent = 'Po testohet...';
     const r = await syncGithub(true);
     const err = await metaGet('lastGithubError', '');
-    if (r && !err) {
-      msg.className = 'small text-success';
-      msg.textContent = '✓ Lidhja funksionon. ' + (r.uploaded ? 'Kopja u ngarkua.' : 'Gjithçka është e përditësuar.') +
-        (r.added || r.updated ? ' U marrën ' + (r.added + r.updated) + ' dokumente nga GitHub.' : '');
-    } else { msg.className = 'small text-danger'; msg.textContent = '✗ ' + (err || 'Dështoi'); }
+    if (r && !err) { msg.className = 'small text-success'; msg.textContent = '✓ Lidhja funksionon.'; refreshPinState(); }
+    else { msg.className = 'small text-danger'; msg.textContent = '✗ ' + (err || 'Dështoi'); }
   });
-  document.getElementById('ghDisconnect').addEventListener('click', async () => {
+  $('ghDisconnect').addEventListener('click', async () => {
     localStorage.removeItem('gh_backup_cfg');
     await metaSet('lastGithubError', '');
-    document.getElementById('ghToken').value = '';
-    document.getElementById('ghMsg').textContent = 'U shkëput. Dokumentet mbeten në pajisje.';
-    renderBackupPanel();
+    ['pnToken', 'pnPin', 'pcPin', 'ghToken'].forEach(i => $(i).value = '');
+    setMsg('text-muted', 'U shkëput. Dokumentet mbeten në pajisje.');
+    refreshPinState(); renderBackupPanel();
   });
-  document.getElementById('supaImportBtn').addEventListener('click', async () => {
-    const m = document.getElementById('supaMsg');
-    m.className = 'small text-muted'; m.textContent = 'Po lidhet me Supabase...';
+  $('supaImportBtn').addEventListener('click', async () => {
+    const m = $('supaMsg');
+    m.className = 'small mt-2 text-muted'; m.textContent = 'Po lidhet me Supabase...';
     try {
       const r = await importFromSupabase();
-      m.className = 'small text-success';
+      m.className = 'small mt-2 text-success';
       m.textContent = '✓ ' + r.total + ' dokumente në Supabase · ' + r.added + ' të reja u shtuan.';
       renderArkiva(); updateArkivaBadge(); scheduleAutoSync();
-    } catch (e) { m.className = 'small text-danger'; m.textContent = '✗ ' + e.message; }
+    } catch (e) { m.className = 'small mt-2 text-danger'; m.textContent = '✗ ' + e.message; }
   });
+}
+function refreshPinState() {
+  const el = document.getElementById('pinState'); if (!el) return;
+  const c = ghCfg();
+  if (c && c.pin) el.innerHTML = '<span class="text-success"><i class="fa-solid fa-lock me-1"></i>Aktiv me PIN · repo <b>' + c.repo + '</b></span>';
+  else if (c && c.token) el.innerHTML = '<span class="text-warning"><i class="fa-solid fa-key me-1"></i>Aktiv pa PIN (mënyra e vjetër) · ' + c.repo + '</span>';
+  else el.innerHTML = '<span class="text-muted">Sinkronizimi nuk është aktivizuar.</span>';
 }
 function openBackupModal() {
   buildBackupModal();
   const c = ghCfg() || {};
-  document.getElementById('ghRepo').value = c.repo || '';
-  document.getElementById('ghToken').value = c.token || '';
-  document.getElementById('ghBranch').value = c.branch || 'main';
-  document.getElementById('ghPath').value = c.path || 'arkiva.json';
-  document.getElementById('ghMsg').textContent = '';
+  if (c.pin) { document.getElementById('pcRepo').value = c.repo || ''; document.getElementById('pnRepo').value = c.repo || ''; }
+  else { document.getElementById('ghRepo').value = c.repo || ''; document.getElementById('ghToken').value = c.token || '';
+         document.getElementById('ghBranch').value = c.branch || 'main'; document.getElementById('ghPath').value = c.path || 'arkiva.json'; }
+  document.getElementById('pinMsg').textContent = '';
+  refreshPinState();
   new bootstrap.Modal(document.getElementById('backupModal')).show();
 }
 
@@ -1563,6 +1706,8 @@ document.addEventListener('DOMContentLoaded', () => {
   renderBackupPanel();
   if (ghReady()) setTimeout(() => syncGithub(true), 2500);
   window.addEventListener('online', () => { if (ghReady()) scheduleAutoSync(); });
+  // Rifreskim automatik çdo 60 sekonda (merr ndryshimet nga pajisja tjetër)
+  setInterval(() => { if (ghReady() && document.visibilityState === 'visible' && !_syncing) syncGithub(true); }, 60000);
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && ghReady()) scheduleAutoSync(); });
 });
 
@@ -1692,6 +1837,8 @@ async function viewFromArkiva(id) {
 }
 
 // ── LOAD FROM ARKIVA (fill form) ──────────────────────────────────────
+function setVal(id, v) { const el = document.getElementById(id); if (el) el.value = v; }
+
 async function loadFromArkiva(id) {
   const invoices = await getAllInvoices();
   const d = invoices.find(i => i.id === id);
@@ -1701,37 +1848,39 @@ async function loadFromArkiva(id) {
 
   editingId = id; // Vendos ID e dokumentit që po editohet
   montimLoading = true;
+  try {
 
   setDocType(d.docType || 'fature');
-  document.getElementById('leshuesi_emri').value = d.leshuesi?.emri || '';
-  document.getElementById('leshuesi_nipt').value = d.leshuesi?.nipt || '';
-  document.getElementById('leshuesi_adresa').value = d.leshuesi?.adresa || '';
-  document.getElementById('leshuesi_tel').value = d.leshuesi?.tel || '';
-  document.getElementById('leshuesi_email').value = d.leshuesi?.email || '';
-  document.getElementById('leshuesi_web').value = d.leshuesi?.web || '';
-  document.getElementById('bleres_emri').value = d.bleres?.emri || '';
-  document.getElementById('bleres_nipt').value = d.bleres?.nipt || '';
-  document.getElementById('bleres_adresa').value = d.bleres?.adresa || '';
-  document.getElementById('bleres_tel').value = d.bleres?.tel || '';
-  document.getElementById('bleres_email').value = d.bleres?.email || '';
-  document.getElementById('bleres_modeli').value = d.bleres?.modeli || '';
-  document.getElementById('nr_fatura').value = d.nr_fatura || '';
-  document.getElementById('data_fatura').value = d.data_fatura || '';
-  document.getElementById('data_skadimit').value = d.data_skadimit || '';
-  document.getElementById('validitet').value = d.validitet || '30 ditë';
-  document.getElementById('shenime').value = d.shenime || '';
-  document.getElementById('monedha').value = d.monedha || 'ALL';
+  setVal('leshuesi_emri', d.leshuesi?.emri || '');
+  setVal('leshuesi_nipt', d.leshuesi?.nipt || '');
+  setVal('leshuesi_adresa', d.leshuesi?.adresa || '');
+  setVal('leshuesi_tel', d.leshuesi?.tel || '');
+  setVal('leshuesi_email', d.leshuesi?.email || '');
+  setVal('leshuesi_web', d.leshuesi?.web || '');
+  setVal('bleres_emri', d.bleres?.emri || '');
+  setVal('bleres_nipt', d.bleres?.nipt || '');
+  setVal('bleres_adresa', d.bleres?.adresa || '');
+  setVal('bleres_tel', d.bleres?.tel || '');
+  setVal('bleres_email', d.bleres?.email || '');
+  setVal('bleres_modeli', d.bleres?.modeli || '');
+  setVal('nr_fatura', d.nr_fatura || '');
+  setVal('data_fatura', d.data_fatura || '');
+  setVal('data_skadimit', d.data_skadimit || '');
+  setVal('validitet', d.validitet || '30 ditë');
+  setVal('shenime', d.shenime || '');
+  setVal('monedha', d.monedha || 'ALL');
   updateCurrency();
-  document.getElementById('zbritje').value = d.disc || 0;
-  document.getElementById('tvshCheck').checked = d.tvshOn || false;
-  document.getElementById('tvsh_norma').value = d.tvshRate || 20;
+  setVal('zbritje', d.disc || 0);
+  { const t = document.getElementById('tvshCheck'); if (t) t.checked = d.tvshOn || false; }
+  setVal('tvsh_norma', d.tvshRate || 20);
   toggleTvsh();
 
   document.getElementById('itemsBody').innerHTML = '';
   rowCounter = 0;
   (d.rows || []).forEach(r => addRow(r.desc, r.qty, r.unit, r.price, undefined, '', '', '', r.note || ''));
   calcTotals();
-  montimLoading = false;
+  } catch (err) { console.error('edit:', err); alert('Gabim gjatë hapjes për editim: ' + err.message); }
+  finally { montimLoading = false; }
 
   showTab('krijoTab', document.querySelectorAll('.nav-tab')[0]);
 
@@ -2211,7 +2360,8 @@ function buildPreviewHTML(d) {
     </div>`}
     <div style="margin-top:20px;padding-top:12px;border-top:1px solid #e5e7eb;font-size:0.78rem;color:#6b7280;text-align:center">
       ${d.leshuesi?.emri} • <a href="https://www.instagram.com/shkodratech/" target="_blank" rel="noopener" style="color:#c13584;font-weight:600;text-decoration:none">@shkodratech</a> • 
-      <a href="https://wa.me/355674474801" style="color:#25d366;font-weight:600;text-decoration:none">📱 +355674474801</a>
+      <a href="https://wa.me/355674474801" style="color:#25d366;font-weight:600;text-decoration:none">📱 +355674474801</a> • 
+      <a href="https://www.shkodratech.al" target="_blank" rel="noopener" style="color:#1a56db;font-weight:600;text-decoration:none">🌐 www.shkodratech.al</a>
     </div>`;
 }
 
